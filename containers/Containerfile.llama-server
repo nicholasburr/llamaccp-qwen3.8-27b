@@ -1,0 +1,130 @@
+# Global Arguments
+ARG FEDORA_VERSION=44
+ARG ROCM_VERSION=7.2.4
+ARG REPO=https://github.com/ggml-org/llama.cpp.git
+# Pinned to the exact llama.cpp commit inside the current image (see TAGS:
+# b10896 -> tag b10896-rocm-7.2.4). `make build` always passes BRANCH
+# explicitly; this default keeps manual `podman build` reproducible too.
+# Bump both via `make new-build BUILD=... COMMIT=...`.
+ARG BRANCH=fa6769818708afd9807b22183ccda112fd563427
+ARG GPU_TARGET=gfx1151
+
+# --- BUILDER STAGE ---
+FROM registry.fedoraproject.org/fedora:${FEDORA_VERSION} AS builder
+ARG ROCM_VERSION
+ARG REPO
+ARG BRANCH
+ARG GPU_TARGET
+
+# Setup ROCm Repository
+RUN <<EOF
+cat <<REPO > /etc/yum.repos.d/rocm.repo
+[ROCm-${ROCM_VERSION}]
+name=ROCm-${ROCM_VERSION}
+baseurl=https://repo.radeon.com/rocm/rhel10/${ROCM_VERSION}/main
+enabled=1
+priority=50
+gpgcheck=1
+gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
+REPO
+EOF
+
+# Install Build Dependencies
+RUN dnf -y --nodocs --setopt=install_weak_deps=False \
+    install \
+    make gcc cmake lld clang clang-devel compiler-rt libcurl-devel ninja-build \
+    rocm-llvm rocm-device-libs hip-runtime-amd hip-devel libdrm \
+    rocblas rocblas-devel hipblas hipblas-devel rocm-cmake libomp-devel libomp \
+    rocminfo radeontop \
+    git-core && dnf clean all && rm -rf /var/cache/dnf/*
+    
+# Build llama.cpp
+ENV HIP_PATH=/opt/rocm 
+ENV HIP_CLANG_PATH=/opt/rocm/llvm/bin 
+ENV HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode 
+ENV PATH=/opt/rocm/bin:/opt/rocm/llvm/bin:$PATH
+ENV ROCM_PATH=/opt/rocm 
+
+WORKDIR /opt/llama.cpp
+RUN git clone -b ${BRANCH} --single-branch --recursive ${REPO} . && \
+    git clean -xdf && git submodule update --recursive
+
+# Building llama.cpp
+RUN cmake -S . -B build -G Ninja \
+#    -DAMDGPU_TARGETS=${GPU_TARGET} \
+    -DCMAKE_HIP_ARCHITECTURES=${GPU_TARGET} \
+#    -DCMAKE_HIP_FLAGS="--rocm-path=/opt/rocm -mllvm --amdgpu-unroll-threshold-local=600" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DGGML_BUILD_TESTS=OFF \
+#    -DGGML_CUDA_ENABLE_UNIFIED_MEMORY=1 \
+    -DGGML_HIP=1 \
+    -DGGML_RPC=1 \
+    -DHIP_PATH=/opt/rocm \
+    -DHIP_PLATFORM=amd \
+    -DLLAMA_BUILD_TESTS=OFF \
+    -DLLAMA_BUILD_SERVER=ON \
+    -DLLAMA_BUILD_EXAMPLES=ON \
+    -DLLAMA_HIP_UMA=1 \
+    -DROCM_PATH=/opt/rocm \
+    && cmake --build build --config Release -- -j$(nproc) \
+    && cmake --install build --config Release
+
+# Copy gfx1151 specific dependacies; saves about 18gb in image size.
+#find /opt/rocm-${ROCM_VERSION}/lib/rocprofiler-systems/ -name 'lib*.so*' -exec cp -P {} /usr/lib64/rocprofiler-systems/ \;
+#RUN find /opt/rocm-7.2.1/lib/ -name libhipblas.so* -exec cp -P {} /tmp/ \;
+RUN <<EOF
+mkdir -p /usr/lib64/rocprofiler-systems
+mkdir -p /usr/lib64/rocblas/library
+find /opt/llama.cpp/build -name 'lib*.so*' -exec cp -P {} /usr/lib64/ \;
+find /opt/rocm-${ROCM_VERSION}/lib -name 'lib*.so*' -exec cp -P {} /usr/lib64/ \;
+find /opt/rocm-${ROCM_VERSION}/lib/rocblas/library -type f -name "*${GPU_TARGET}*" -exec cp {} /usr/lib64/rocblas/library/ \;
+ldconfig
+EOF
+ 
+# --- RUNTIME STAGE ---
+FROM registry.fedoraproject.org/fedora-minimal:${FEDORA_VERSION}
+ARG ROCM_VERSION
+
+# Setup ROCm Repository
+RUN <<EOF
+cat <<REPO > /etc/yum.repos.d/rocm.repo
+[ROCm-${ROCM_VERSION}]
+name=ROCm-${ROCM_VERSION}
+baseurl=https://repo.radeon.com/rocm/rhel10/${ROCM_VERSION}/main
+enabled=1
+priority=50
+gpgcheck=1
+gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
+REPO
+EOF
+
+# Install runtime dependencies
+RUN microdnf -y install bash ca-certificates libstdc++ libgomp procps-ng curl && \
+    microdnf clean all
+
+# Copy artifacts
+COPY --from=builder /usr/local/ /usr/local/
+COPY --from=builder /usr/share/libdrm/amdgpu.ids /usr/share/libdrm/amdgpu.ids
+COPY --from=builder /usr/lib64/ /usr/lib64/
+COPY --from=builder /opt/llama.cpp/build/bin/llama  /usr/local/bin/
+COPY --from=builder /opt/llama.cpp/build/bin/llama-server /usr/local/bin/
+
+# Linker Configuration
+RUN <<EOF
+cat <<CONFIG > /etc/ld.so.conf.d/rocm-extras.conf
+/usr/lib64/rocprofiler-systems
+/usr/local/lib64
+/usr/lib64
+CONFIG
+ldconfig
+EOF
+
+# Environment for Strix Halo (gfx1151)
+ENV PATH="/usr/local/bin:/opt/rocm-${ROCM_VERSION}/bin:$PATH" \
+    LD_LIBRARY_PATH="/usr/lib64/rocprofiler-systems:/usr/lib64:/usr/local/lib64:$LD_LIBRARY_PATH" \
+    GGML_HIP_UMA=1 \
+    HIP_VISIBLE_DEVICES=0
+
+HEALTHCHECK CMD [ "curl", "-f", "http://localhost:8000/health" ]
+
+ENTRYPOINT ["/usr/local/bin/llama-server"]

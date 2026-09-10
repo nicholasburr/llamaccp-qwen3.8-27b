@@ -1,0 +1,26 @@
+[Unit]
+Description=Build llama-server image for ROCm Strix Halo
+Documentation=https://github.com/nicholasburr/fedora-llama-cpp
+After=network-online.target
+Wants=network-online.target
+
+[Build]
+ImageTag=localhost/llama-server:b10896-rocm-7.2.4
+File=containers/Containerfile.llama-server
+SetWorkingDirectory=/home/nburr/Desktop/fedora/fedora-ai
+ForceRM=true
+# Build args for containers/Containerfile.llama-server (same defaults as its
+# ARG lines; kept here so the build is explicit). `make sync` keeps ImageTag
+# and these BuildArg lines in lockstep with TAGS.
+BuildArg=FEDORA_VERSION=44
+BuildArg=ROCM_VERSION=7.2.4
+BuildArg=GPU_TARGET=gfx1151
+BuildArg=BRANCH=fa6769818708afd9807b22183ccda112fd563427
+
+[Service]
+Type=simple
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,27 @@
+# fedora-ai — single source of truth for image build & deployment.
+#
+# The image tag is computed by the Makefile (never hand-typed):
+#
+#     IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>
+#
+# e.g. b10896-rocm-7.2.4
+#
+# Every deployment method (scripts/llama-server.sh, podman-compose.yml,
+# config/containers/systemd/llama-server/*) is kept in sync with this file
+# by `make sync`. See README.md "Tagging & deployment".
+#
+# Workflow for a new llama.cpp build:
+#     make new-build BUILD=b12345 COMMIT=<sha>
+#     make build && make deploy
+#
+# LLAMA_BUILD / LLAMA_COMMIT are read from the image's
+# `llama-server --version` output so the tag always describes the exact
+# binary inside the image.
+
+IMAGE_NAME=localhost/llama-server
+LLAMA_BUILD=b10896
+LLAMA_COMMIT=fa6769818708afd9807b22183ccda112fd563427
+ROCM_VERSION=7.2.4
+FEDORA_VERSION=44
+GPU_TARGET=gfx1151
+MODEL=unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL
