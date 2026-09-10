@@ -5,7 +5,7 @@ After=network-online.target
 
 [Container]
 ContainerName=llama-server
-Image=localhost/llama-server:b10896-rocm-7.2.4
+Image=localhost/llama-server:b10902-rocm-7.2.4
 Network=llama-network
 PublishPort=8000:8000
 AddDevice=/dev/dri

@@ -21,7 +21,7 @@ networks:
 
 services:
   llama-server:
-    image: localhost/llama-server:b10896-rocm-7.2.4
+    image: localhost/llama-server:b10902-rocm-7.2.4
     container_name: llama-server
     # Custom code to enable ipc: host in podman-compose. See fedora-setup.sh.
     ipc: host

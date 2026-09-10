@@ -3,10 +3,12 @@ ARG FEDORA_VERSION=44
 ARG ROCM_VERSION=7.2.4
 ARG REPO=https://github.com/ggml-org/llama.cpp.git
 # Pinned to the exact llama.cpp commit inside the current image (see TAGS:
-# b10896 -> tag b10896-rocm-7.2.4). `make build` always passes BRANCH
+# b10902 -> tag b10902-rocm-7.2.4). `make build` always passes BRANCH
 # explicitly; this default keeps manual `podman build` reproducible too.
 # Bump both via `make new-build BUILD=... COMMIT=...`.
-ARG BRANCH=fa6769818708afd9807b22183ccda112fd563427
+# BRANCH is a full commit SHA (checked out after clone — `clone -b <sha>`
+# treats it as a branch name and fails, so we clone all refs first).
+ARG BRANCH=df03399b885831b2a1603b3abb0d8c156808e363
 ARG GPU_TARGET=gfx1151
 
 # --- BUILDER STAGE ---
@@ -46,7 +48,8 @@ ENV PATH=/opt/rocm/bin:/opt/rocm/llvm/bin:$PATH
 ENV ROCM_PATH=/opt/rocm 
 
 WORKDIR /opt/llama.cpp
-RUN git clone -b ${BRANCH} --single-branch --recursive ${REPO} . && \
+RUN git clone --recursive ${REPO} . && \
+    git checkout --detach ${BRANCH} && \
     git clean -xdf && git submodule update --recursive
 
 # Building llama.cpp

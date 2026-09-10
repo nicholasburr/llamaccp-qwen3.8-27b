@@ -5,7 +5,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Build]
-ImageTag=localhost/llama-server:b10896-rocm-7.2.4
+ImageTag=localhost/llama-server:b10902-rocm-7.2.4
 File=containers/Containerfile.llama-server
 SetWorkingDirectory=/home/nburr/Desktop/fedora/fedora-ai
 ForceRM=true
@@ -15,7 +15,7 @@ ForceRM=true
 BuildArg=FEDORA_VERSION=44
 BuildArg=ROCM_VERSION=7.2.4
 BuildArg=GPU_TARGET=gfx1151
-BuildArg=BRANCH=fa6769818708afd9807b22183ccda112fd563427
+BuildArg=BRANCH=df03399b885831b2a1603b3abb0d8c156808e363
 
 [Service]
 Type=simple

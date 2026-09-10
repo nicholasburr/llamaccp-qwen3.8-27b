@@ -8,7 +8,7 @@
 #   2. podman-compose.yml              -> podman compose up -d
 #   3. config/containers/systemd/...   -> quadlet (llama-server.service)
 #
-# Prereqs: image localhost/llama-server:b10896-rocm-7.2.4 (see
+# Prereqs: image localhost/llama-server:b10902-rocm-7.2.4 (see
 # containers/Containerfile.llama-server), podman network "llama-network",
 # podman secret "huggingface-token".
 #
@@ -53,4 +53,4 @@ podman run --replace -itd --name llama-server \
   --secret=huggingface-token,type=env,target=HF_TOKEN \
   --volume=/home/nburr/.cache/huggingface/hub/:/root/.cache/huggingface/hub/:Z \
   --volume=/home/nburr/.config/llama.cpp/:/root/.config/llama.cpp/:Z \
-  localhost/llama-server:b10896-rocm-7.2.4
+  localhost/llama-server:b10902-rocm-7.2.4
