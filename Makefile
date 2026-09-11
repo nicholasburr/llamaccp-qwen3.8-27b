@@ -1,4 +1,4 @@
-# fedora-ai — llama.cpp (ROCm gfx1151) image build & container deployment.
+# fedora-llamacpp — llama.cpp (ROCm gfx1151) image build & container deployment.
 #
 # Tag scheme
 # ----------
@@ -53,7 +53,7 @@ METHOD ?= compose
 .PHONY: help show verify sync build tag new-build deploy deploy-compose deploy-script deploy-quadlet down stop logs status
 
 help: ## Show the available targets
-	@echo "fedora-ai — active image: $(IMAGE)"
+	@echo "fedora-llamacpp — active image: $(IMAGE)"
 	@echo
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | \
 		awk '{ n=index($$0, ":"); h=index($$0, "## "); \

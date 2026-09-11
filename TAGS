@@ -1,4 +1,4 @@
-# fedora-ai — single source of truth for image build & deployment.
+# fedora-llamacpp — single source of truth for image build & deployment.
 #
 # The image tag is computed by the Makefile (never hand-typed):
 #

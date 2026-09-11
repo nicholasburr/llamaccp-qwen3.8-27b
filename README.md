@@ -1,4 +1,4 @@
-# fedora-ai
+# fedora-llamacpp
 
 Podman-based deployment of `llama-server` (llama.cpp, ROCm gfx1151) running
 Qwen3.8-27B-GGUF (UD-Q4_K_XL) on Strix Halo (Ryzen AI Max+ 395, 32GB UMA).
