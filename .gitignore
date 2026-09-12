@@ -3,6 +3,9 @@
 *~
 *.swp
 
+# python
+__pycache__/
+
 # local scratch
 *.log
 tmp/

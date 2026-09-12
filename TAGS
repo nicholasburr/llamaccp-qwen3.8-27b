@@ -4,7 +4,7 @@
 #
 #     IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>
 #
-# e.g. b10896-rocm-7.2.4
+# e.g. b10902-rocm-10.0.0
 #
 # Every deployment method (scripts/llama-server.sh, podman-compose.yml,
 # config/containers/systemd/llama-server/*) is kept in sync with this file
@@ -21,7 +21,7 @@
 IMAGE_NAME=localhost/llama-server
 LLAMA_BUILD=b10902
 LLAMA_COMMIT=df03399b885831b2a1603b3abb0d8c156808e363
-ROCM_VERSION=7.2.4
+ROCM_VERSION=10.0.0
 FEDORA_VERSION=44
 GPU_TARGET=gfx1151
 MODEL=unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL

@@ -1,15 +1,19 @@
-# Podman Compose deployment of llama-server (ROCm, Strix Halo).
+# Test deployment for validating a NEW image tag WITHOUT touching the active
+# llama-server (container `llama-server`, port 8000, podman-compose.yml).
 #
-# One of three EQUIVALENT deployment methods — all define the identical
-# container (name, image, port 8000, devices, IPC, volumes, env); see
-# README.md. Run exactly ONE of them at a time:
-#   1. scripts/llama-server.sh         -> podman run
-#   2. this file                       -> podman compose up -d
-#   3. config/containers/systemd/...   -> quadlet (llama-server.service)
+# Identical container config to the production service in podman-compose.yml,
+# except:
+#   - service/container name: llama-server-rocm10 (was llama-server)
+#   - host port 8001 -> container port 8000 (in-container port stays 8000 so
+#     the image HEALTHCHECK keeps working)
+#   - restart: no (disposable — `make down-test` removes it)
 #
-#   podman compose up -d              # start (recreates if changed, like --replace)
-#   podman compose down               # stop & remove
-#   podman compose logs -f llama-server
+#   make deploy-test                          # start (image ref synced by `make sync`)
+#   make bench                                # A/B throughput vs port 8000
+#   make down-test                            # stop & remove
+#
+# Note: the test container shares the iGPU with the production container, so
+# numbers are "contended window" values (see README §2 and §4).
 
 secrets:
   huggingface-token:
@@ -20,14 +24,14 @@ networks:
     external: true
 
 services:
-  llama-server:
+  llama-server-rocm10:
     image: localhost/llama-server:b10902-rocm-10.0.0
-    container_name: llama-server
+    container_name: llama-server-rocm10
     # Custom code to enable ipc: host in podman-compose. See fedora-setup.sh.
     ipc: host
-    restart: unless-stopped
+    restart: "no"
     ports:
-      - "8000:8000"
+      - "8001:8000"
     devices:
       - /dev/dri
       - /dev/kfd
@@ -49,7 +53,7 @@ services:
       # Model
       LLAMA_ARG_HF_REPO: "unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL"
       LLAMA_ARG_ALIAS: "Qwen3.8-27B-ThinkingCoder"
-      # Server
+      # Server (in-container port stays 8000; published as host 8001)
       LLAMA_ARG_LOG_TIMESTAMPS: "on"
       LLAMA_ARG_HOST: "0.0.0.0"
       LLAMA_ARG_PORT: "8000"

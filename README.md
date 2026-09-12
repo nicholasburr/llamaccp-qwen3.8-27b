@@ -1,7 +1,10 @@
 # fedora-llamacpp
 
-Podman-based deployment of `llama-server` (llama.cpp, ROCm gfx1151) running
+Podman-based deployment of `llama-server` (llama.cpp, ROCm 10 gfx1151) running
 Qwen3.8-27B-GGUF (UD-Q4_K_XL) on Strix Halo (Ryzen AI Max+ 395, 32GB UMA).
+
+ROCm 10 is installed **with pip wheels** (no repo.radeon.com RPMs) — see
+"ROCm 10 via pip wheels" below.
 
 One container, three equivalent deployment methods. All three define the
 **identical** container (name `llama-server`, port 8000, image, devices,
@@ -21,8 +24,8 @@ IPC, volumes, env) — keep them in sync. Run exactly one at a time:
 The image tag is **computed, never hand-typed**. `TAGS` (repo root) is the
 single source of truth for the build inputs; the Makefile derives:
 
-    IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>    e.g. b10896-rocm-7.2.4
-    IMAGE     = localhost/llama-server:b10896-rocm-7.2.4    (+ a `latest` alias)
+    IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>    e.g. b10902-rocm-10.0.0
+    IMAGE     = localhost/llama-server:b10902-rocm-10.0.0    (+ a `latest` alias)
 
 `make sync` rewrites the image reference — and the quadlet `BuildArg=` lines
 plus the `LLAMA_ARG_HF_REPO` model ref — in all three deployment methods, so
@@ -55,6 +58,72 @@ Deploying a new tag:
 - `make deploy-quadlet` needs root: it installs the units into
   `/etc/containers/systemd/llama-server/`, then starts
   `llama-server-build.service` and `llama-server.service`.
+
+## ROCm 10 via pip wheels
+
+The image no longer uses the `repo.radeon.com` RPM repository. ROCm
+`10.0.0` is installed from AMD's pip-wheel index, per AMD's pip install
+docs (https://rocm.docs.amd.com, "Install ROCm wheel packages"), which for
+this hardware (Ryzen AI Max / `gfx1151`) and Python 3.14 are:
+
+```
+python -m pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ \
+    "rocm[libraries,device-gfx1151]==10.0.0"
+```
+
+The Containerfile adds the `devel` extra on top (`rocm[libraries,devel,device-gfx1151]`)
+because `llama.cpp` is compiled from source in the image: `devel` carries the
+HIP compiler, CMake configs, headers and static libraries. The wheels unpack
+a classic `/opt/rocm`-style tree under the venv:
+
+| Wheel payload | Contents |
+|---|---|
+| `_rocm_sdk_core` | runtime libraries (HIP, HSA, comgr, SMI, ...) + `amdgpu.ids` |
+| `_rocm_sdk_libraries` | rocBLAS / hipBLAS / hipBLASLt + `gfx1151` prebuilt kernels |
+| `_rocm_sdk_devel` | SDK root: `hipcc`, clang/LLVM, CMake configs, headers, static libs |
+
+Build stage (fedora:44): `dnf` installs only the host build tools
+(`gcc g++ cmake ninja-build ...`, `python3` 3.14 + `python3-pip`); the venv
+at `/opt/rocm-venv` holds the ROCm wheels; `rocm-sdk path --root` pins the
+(de-lazily-expanded) SDK root, and `llama.cpp` is configured with the same
+CMake flags as the old RPM build — `CMAKE_HIP_ARCHITECTURES=gfx1151`,
+`GGML_HIP=1`, `GGML_RPC=1`, `LLAMA_HIP_UMA=1` — pointed at the wheel's SDK
+root via `HIP_PATH`/`ROCM_PATH`/`HIP_CLANG_PATH`/`HIP_DEVICE_LIB_PATH`.
+The wheel's `hipcc` compiles the HIP side; the host `gcc` compiles the
+C/C++ side (same compiler split as the RPM build).
+
+Runtime stage (fedora-minimal): only a **slim consolidated tree** is copied
+to `/opt/rocm-10.0.0/lib` — the core runtime libs (HIP, HSA, comgr, SMI,
+bundled sysdeps), the BLAS stack (rocBLAS / hipBLAS / hipBLASLt + their
+`gfx1151` prebuilt kernels), and `amdgpu.ids` (also at
+`/usr/share/libdrm/`). ROCm 10's rocBLAS additionally pulls its
+`rocsolver` / `origami` / `rocroller` backends, which link against the
+wheel's bundled LLVM/Clang runtime (`libLLVM.so.23.0git`,
+`libclang-cpp.so.23.0git`) — those two runtime libs are included; the rest
+of the LLVM toolchain (compiler, MLIR, clang tools) is not. No venv, no
+compiler, no RPM repos. Final image: **1.41 GB** (vs 2.67 GB for the old
+RPM-based `rocm-7.2.4` image). `LD_LIBRARY_PATH` points at
+`/opt/rocm-10.0.0/lib`; `GGML_HIP_UMA=1` and `HIP_VISIBLE_DEVICES=0` stay
+as before.
+
+### ROCm 10.0.0 vs 7.2.4 — A/B (same llama.cpp b10902)
+
+`scripts/bench.py` A/B: production server (`b10902-rocm-7.2.4`, :8000)
+vs test container (`b10902-rocm-10.0.0`, :8001), identical llama.cpp
+build (`build 10902`), Qwen3.8-27B Q4_K_XL with `draft-mtp` speculative
+decoding, quiet iGPU, 3 runs × 128 tokens, alternating to equalize GPU
+contention:
+
+| | ROCm 7.2.4 | ROCm 10.0.0 |
+|---|---|---|
+| eval t/s (mean) | 28.30 | 25.31 |
+| eval t/s (min) | 28.23 | 23.82 |
+| prompt t/s (mean) | ~26.3 | ~21.2 |
+
+**ROCm 10.0.0 is ≈10% slower on token generation** for this model on this
+iGPU; prompt processing is comparable. The 10-wheel image is kept as the
+maintainable single-pip-source build — flip production with
+`make deploy` if/when the regression is acceptable or gone in a later ROCm.
 
 ## 1. The fix: IPC namespace (mandatory)
 
@@ -141,7 +210,7 @@ environment:
   `blk.64.nextn.*`). Effective sampling comes from the model file
   (temp 1.0, top_p 0.95, top_k 20) plus the server default min_p 0.05.
 
-## 3. Caveats
+## 4. Caveats
 
 - **Shared GPU contention:** the tuning pass in §2 was run while an older
   baseline container shared the iGPU. While *any* other GPU workload is

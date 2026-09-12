@@ -5,7 +5,7 @@
 # TAGS is the single source of truth. The image tag is computed, never
 # hand-typed:
 #
-#     IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>     e.g. b10896-rocm-7.2.4
+#     IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>     e.g. b10902-rocm-10.0.0
 #
 # `make build` tags the image $(IMAGE) plus $(IMAGE_NAME):latest; `make sync`
 # rewrites every image reference in the three deployment methods (script /
@@ -17,7 +17,7 @@
 #     make deploy [METHOD=compose|script|quadlet]  # recreate the container
 #
 # Reusing an image that already exists locally (no rebuild):
-#     make tag FROM=rocm-7.2.4
+#     make tag FROM=rocm-10.0.0
 #
 # Run `make help` for the target list. See README.md "Tagging & deployment".
 
@@ -45,12 +45,13 @@ QUADLET_SRC   := config/containers/systemd/llama-server
 QUADLET_DST   := /etc/containers/systemd/llama-server
 DEPLOY_FILES  := scripts/llama-server.sh \
                  podman-compose.yml \
+                 podman-compose.test.yml \
                  $(QUADLET_SRC)/llama-server.build \
                  $(QUADLET_SRC)/llama-server.container
 
 METHOD ?= compose
 
-.PHONY: help show verify sync build tag new-build deploy deploy-compose deploy-script deploy-quadlet down stop logs status
+.PHONY: help show verify sync build tag new-build deploy deploy-compose deploy-script deploy-quadlet deploy-test down-test bench down stop logs status
 
 help: ## Show the available targets
 	@echo "fedora-llamacpp — active image: $(IMAGE)"
@@ -93,7 +94,7 @@ sync: ## Rewrite image tag, quadlet build args and model ref in all methods to m
 	old=$$(awk -F'"' '/LLAMA_ARG_HF_REPO/{print $$2; exit}' podman-compose.yml); \
 	if [ -n "$$old" ] && [ "$$old" != "$(MODEL)" ]; then \
 		echo "syncing model ref: $$old -> $(MODEL)"; \
-		for f in scripts/llama-server.sh podman-compose.yml $(QUADLET_SRC)/llama-server.container; do \
+		for f in $(DEPLOY_FILES); do \
 			sed -i "s|$$old|$(MODEL)|g" $$f; \
 		done; \
 	else \
@@ -111,8 +112,8 @@ build: ## Build the image as $(IMAGE) (+ latest), pinned to commit $(LLAMA_COMMI
 		-t $(IMAGE_NAME):latest \
 		.
 
-tag: ## Retag an existing local image as $(IMAGE), no rebuild: make tag FROM=rocm-7.2.4
-	@test -n "$(FROM)" || { echo "usage: make tag FROM=<current-tag>   (e.g. FROM=rocm-7.2.4)"; exit 2; }
+tag: ## Retag an existing local image as $(IMAGE), no rebuild: make tag FROM=rocm-10.0.0
+	@test -n "$(FROM)" || { echo "usage: make tag FROM=<current-tag>   (e.g. FROM=rocm-10.0.0)"; exit 2; }
 	podman tag $(IMAGE_NAME):$(FROM) $(IMAGE)
 	podman tag $(IMAGE_NAME):$(FROM) $(IMAGE_NAME):latest
 	@podman images --format '{{.Repository}}:{{.Tag}}  ({{.Size}})' | grep -F "$(IMAGE_NAME):" | sed 's/^/  /'
@@ -146,6 +147,15 @@ deploy-quadlet: ## Install quadlet units into $(QUADLET_DST) and start (requires
 	systemctl daemon-reload
 	systemctl enable --now llama-server-build.service
 	systemctl enable --now llama-server.service
+
+deploy-test: ## Start the validation container on port 8001 (podman-compose.test.yml; does NOT touch port 8000)
+	podman compose -f podman-compose.test.yml up -d
+
+down-test: ## Stop & remove the port-8001 validation container
+	podman compose -f podman-compose.test.yml down
+
+bench: ## A/B eval throughput: base :8000 vs test :8001 (both must be running)
+	python3 scripts/bench.py
 
 down: ## Stop and remove the container (compose)
 	podman compose down

@@ -5,7 +5,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Build]
-ImageTag=localhost/llama-server:b10902-rocm-7.2.4
+ImageTag=localhost/llama-server:b10902-rocm-10.0.0
 File=containers/Containerfile.llama-server
 SetWorkingDirectory=/home/nburr/Desktop/fedora/fedora-llamacpp
 ForceRM=true
@@ -13,7 +13,7 @@ ForceRM=true
 # ARG lines; kept here so the build is explicit). `make sync` keeps ImageTag
 # and these BuildArg lines in lockstep with TAGS.
 BuildArg=FEDORA_VERSION=44
-BuildArg=ROCM_VERSION=7.2.4
+BuildArg=ROCM_VERSION=10.0.0
 BuildArg=GPU_TARGET=gfx1151
 BuildArg=BRANCH=df03399b885831b2a1603b3abb0d8c156808e363
 
