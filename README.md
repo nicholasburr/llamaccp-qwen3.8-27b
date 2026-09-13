@@ -37,6 +37,8 @@ the three equivalent files above can never drift on the image reference;
 | `make show` | active tag + every image reference in the repo |
 | `make verify` | fail unless every deploy file references exactly the active tag |
 | `make new-build BUILD=b12345 COMMIT=<sha>` | point `TAGS` at a new llama.cpp build (optional `ROCM=`, `FEDORA=`, `GPU_TARGET=`) |
+| `make update` | zero-input update: discover the latest llama.cpp `b-tag` + newest ROCm with a `GPU_TARGET` wheel, update `TAGS`, build, deploy, **label in git** (commit + tag) |
+| `make update-dry` | preview `make update` (discover + diff + plan; nothing is changed) |
 | `make build` | `podman build` with `BRANCH=<LLAMA_COMMIT>` pinned; tags `IMAGE` + `latest` |
 | `make tag FROM=<old-tag>` | retag an existing local image to the active tag (no rebuild) |
 | `make sync` | rewrite image refs / build args / model ref in all three methods |
@@ -48,6 +50,22 @@ Deploying a new tag:
     make new-build BUILD=b12345 COMMIT=<sha>    # 1. point TAGS at the build
     make build                                  # 2. build it — or `make tag FROM=<old-tag>` to reuse an existing image
     make deploy                                 # 3. recreate the container on the new tag
+
+**Automatic update — `make update` takes no arguments.** It discovers the
+latest llama.cpp (the newest `b<digits>` git tag on `ggml-org/llama.cpp`
+via `git ls-remote`; the b-tag stream runs ahead of the `v`-releases) and
+the newest ROCm that ships a linux wheel for `GPU_TARGET` on AMD's pip
+index (`stable.repo.amd.com/rocm/whl-next/`) — newer ROCm releases are
+skipped until they add a wheel for this GPU (only `10.0.0` has `gfx1151`).
+If either is newer than `TAGS`, it rewrites `TAGS`, runs
+`make build && make deploy`, waits for `/health`, then commits
+`TAGS` + the synced deploy files and adds an **annotated git tag named
+like the image tag** (e.g. `b10944-rocm-10.0.0`) — every deployed build
+is labeled in git history. If a git remote is added, commit + tag are
+pushed. Idempotent: exits 0 and does nothing when up to date (cron-safe).
+`make update-dry` shows the discovery + diff without changing anything;
+`scripts/update.py --no-deploy` builds + labels without touching the
+running container.
 
 - `LLAMA_BUILD` / `LLAMA_COMMIT` are read from the image's
   `llama-server --version` output (`build 10896, commit fa6769818...`), so

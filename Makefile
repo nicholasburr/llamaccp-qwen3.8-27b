@@ -16,6 +16,12 @@
 #     make build                                   # build + tag the image
 #     make deploy [METHOD=compose|script|quadlet]  # recreate the container
 #
+# ...or with no input at all (discovers the latest llama.cpp b-tag and the
+# newest ROCm with a wheel for GPU_TARGET, builds, deploys, and labels the
+# result in git — commit + annotated tag named like the image):
+#     make update          # full cycle
+#     make update-dry      # discover + diff + plan only
+#
 # Reusing an image that already exists locally (no rebuild):
 #     make tag FROM=rocm-10.0.0
 #
@@ -51,7 +57,7 @@ DEPLOY_FILES  := scripts/llama-server.sh \
 
 METHOD ?= compose
 
-.PHONY: help show verify sync build tag new-build deploy deploy-compose deploy-script deploy-quadlet deploy-test down-test bench down stop logs status
+.PHONY: help show verify sync build tag new-build update update-dry deploy deploy-compose deploy-script deploy-quadlet deploy-test down-test bench down stop logs status
 
 help: ## Show the available targets
 	@echo "fedora-llamacpp — active image: $(IMAGE)"
@@ -127,6 +133,12 @@ new-build: ## Point TAGS at a new llama.cpp build: make new-build BUILD=b12345 C
 	@test -z "$(GPU_TARGET)" || sed -i "s|^GPU_TARGET=.*|GPU_TARGET=$(GPU_TARGET)|"    $(TAGS)
 	@echo "TAGS updated -> $(IMAGE_NAME):$(BUILD)-rocm-$$(awk -F= -v k=ROCM_VERSION '$$1==k{print $$2}' $(TAGS))"
 	@echo "next: make build && make deploy"
+
+update: ## Latest llama.cpp + ROCm with zero input: update TAGS, build, deploy, label in git (commit + tag)
+	python3 scripts/update.py
+
+update-dry: ## Preview make update (discover latest versions + diff + plan; no build/deploy/git)
+	python3 scripts/update.py --dry-run
 
 deploy: sync ## Deploy $(IMAGE): sync, then start via METHOD (compose [default] | script | quadlet)
 	@if [ "$(METHOD)" != "compose" ] && [ "$(METHOD)" != "script" ] && [ "$(METHOD)" != "quadlet" ]; then \
