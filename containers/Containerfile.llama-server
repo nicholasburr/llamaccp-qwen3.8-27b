@@ -71,19 +71,26 @@ RUN git clone --recursive ${REPO} . && \
 
 # Build llama.cpp against the pip-installed ROCm (same flags as the old
 # RPM-based build, pointed at the wheel's SDK root).
+#
+# Options at the pinned build (b10902):
+#   - LLAMA_BUILD_SERVER=ON gates tools/server (+ cli + ui); llama-server,
+#     llama and llama-bench all live in tools/, so LLAMA_BUILD_EXAMPLES=OFF.
+#   - GGML_HIP_GRAPHS is ON by default; set explicitly (iGPU launch overhead).
+#   - No build flag exists or is needed for MTP speculative decoding: the
+#     model file ships the MTP head and it is enabled at runtime
+#     (LLAMA_ARG_SPEC_TYPE=draft-mtp in podman-compose.yml).
 RUN . /opt/rocm-env.sh && \
     cmake -S . -B build -G Ninja \
     -DCMAKE_HIP_ARCHITECTURES=${GPU_TARGET} \
     -DCMAKE_BUILD_TYPE=Release \
     -DGGML_BUILD_TESTS=OFF \
     -DGGML_HIP=1 \
-    -DGGML_RPC=1 \
+    -DGGML_HIP_GRAPHS=ON \
     -DHIP_PATH=${ROCM_DEV_ROOT} \
     -DHIP_PLATFORM=amd \
     -DLLAMA_BUILD_TESTS=OFF \
     -DLLAMA_BUILD_SERVER=ON \
-    -DLLAMA_BUILD_EXAMPLES=ON \
-    -DLLAMA_HIP_UMA=1 \
+    -DLLAMA_BUILD_EXAMPLES=OFF \
     -DROCM_PATH=${ROCM_DEV_ROOT} \
     && cmake --build build --config Release -- -j$(nproc) \
     && cmake --install build --config Release
@@ -146,7 +153,6 @@ EOF
 # Environment for Strix Halo (gfx1151)
 ENV PATH="/usr/local/bin:/opt/rocm-${ROCM_VERSION}/bin:$PATH" \
     LD_LIBRARY_PATH="/opt/rocm-${ROCM_VERSION}/lib:$LD_LIBRARY_PATH" \
-    GGML_HIP_UMA=1 \
     HIP_VISIBLE_DEVICES=0
 
 HEALTHCHECK CMD [ "curl", "-f", "http://localhost:8000/health" ]
