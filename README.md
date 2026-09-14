@@ -6,44 +6,80 @@ Qwen3.8-27B-GGUF (UD-Q4_K_XL) on Strix Halo (Ryzen AI Max+ 395, 32GB UMA).
 ROCm 10 is installed **with pip wheels** (no repo.radeon.com RPMs) — see
 "ROCm 10 via pip wheels" below.
 
-One container, three equivalent deployment methods. All three define the
-**identical** container (name `llama-server`, port 8000, image, devices,
-IPC, volumes, env) — keep them in sync. Run exactly one at a time:
+The Makefile is the single interface for end users: it contains the full
+container definition (name, image, env, devices, IPC, volumes, secret) and
+needs at most three changes — `CONTAINER_NAME`, `IMAGE`, `PORT` — then:
+
+    make deploy      # (re)create and start, wait for /health
+    make status      # container state
+    make logs        # follow the logs
+    make stop / make down
+
+Two equivalent **file-based** methods remain for operators; they define
+the same container and are kept in lockstep with `TAGS` by `make sync`
+(maintainer section of the Makefile). All three methods target the same
+**production slot** — the container `llama-server` on :8000 — and run one
+method at a time:
 
 | Method | File(s) | Start |
 |---|---|---|
-| podman run | `scripts/llama-server.sh` | `./scripts/llama-server.sh` (replaces running container) |
-| podman compose | `podman-compose.yml` | `podman compose up -d` (recreates on change) |
-| quadlet | `config/containers/systemd/llama-server/*.container`, `*.build` | copy into `/etc/containers/systemd/`, `systemctl daemon-reload && systemctl enable --now llama-server` |
+| podman run (default) | `Makefile` | `make deploy` (replaces running container) |
+| podman compose | `podman-compose.yml` | `make deploy-compose` (same `CONTAINER_NAME`/`IMAGE`/`PORT` overrides) |
+| quadlet (systemd --user) | `config/containers/systemd/llama-server/*.container`, `*.build` | `make deploy-quadlet` (user namespace — no root needed) |
 
-> The quadlet units are **not installed by default** on this machine; the
-> container currently running was started via the compose method.
+> The quadlet units are installed in the user namespace but **not
+> enabled** on this machine; `make deploy` (plain `podman run`) is the
+> default method.
 
-## Tagging & deployment (Makefile)
+> **Safety / production slot.** The deploy targets refuse to take over a
+> slot owned by another method (an active quadlet unit, or a
+> compose-managed container), so a stray `make deploy` — human or AI
+> agent — cannot take production down; taking the slot is always a
+> deliberate two-step act (e.g. `podman compose down && make deploy`).
+> The quadlet config is **static** (pinned tag, never `:latest` — enforced
+> by `make verify`), and the build/test flow (`make build`,
+> `make deploy-test`, `make bench`, `make sync`) never touches the running
+> production container. Promoting a new version is explicit:
+> `make sync` (advance the pin) + the owning method's deploy target.
 
-The image tag is **computed, never hand-typed**. `TAGS` (repo root) is the
-single source of truth for the build inputs; the Makefile derives:
+## The Makefile
+
+The Makefile is the single interface. The **end-user** part at the top holds
+the full container definition — at most three things need changing
+(`CONTAINER_NAME`, `IMAGE`, `PORT`) — and the **maintainer** part at the
+bottom builds and updates the image.
+
+**End-user targets** (all you need to run the container):
+
+| Command | Effect |
+|---|---|
+| `make deploy` | (re)create and start the container (`podman run --replace`), wait for `/health`; override with `CONTAINER_NAME=`, `IMAGE=`, `PORT=` |
+| `make status` / `make logs` / `make stop` / `make down` | container lifecycle |
+
+**Maintainer targets** (build & update the image). The image tag is
+**computed, never hand-typed**. `TAGS` (repo root) is the single source of
+truth for the build inputs; the Makefile derives:
 
     IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>    e.g. b10902-rocm-10.0.0
     IMAGE     = localhost/llama-server:b10902-rocm-10.0.0    (+ a `latest` alias)
 
 `make sync` rewrites the image reference — and the quadlet `BuildArg=` lines
-plus the `LLAMA_ARG_HF_REPO` model ref — in all three deployment methods, so
-the three equivalent files above can never drift on the image reference;
+plus the `LLAMA_ARG_HF_REPO` model ref — in all file-based deployment
+methods, so the equivalent files can never drift on the image reference;
 `make verify` fails on drift.
 
 | Command | Effect |
 |---|---|
 | `make show` | active tag + every image reference in the repo |
-| `make verify` | fail unless every deploy file references exactly the active tag |
+| `make verify` | fail unless every file-based method references exactly the active tag |
 | `make new-build BUILD=b12345 COMMIT=<sha>` | point `TAGS` at a new llama.cpp build (optional `ROCM=`, `FEDORA=`, `GPU_TARGET=`) |
-| `make update` | zero-input update: discover the latest llama.cpp `b-tag` + newest ROCm with a `GPU_TARGET` wheel, update `TAGS`, build, deploy, **label in git** (commit + tag) |
+| `make update` | zero-input update: discover the latest llama.cpp `b-tag` + newest ROCm with a `GPU_TARGET` wheel, update `TAGS`, build, sync, deploy, **label in git** (commit + tag) |
 | `make update-dry` | preview `make update` (discover + diff + plan; nothing is changed) |
 | `make build` | `podman build` with `BRANCH=<LLAMA_COMMIT>` pinned; tags `IMAGE` + `latest` |
 | `make tag FROM=<old-tag>` | retag an existing local image to the active tag (no rebuild) |
-| `make sync` | rewrite image refs / build args / model ref in all three methods |
-| `make deploy [METHOD=compose\|script\|quadlet]` | `sync`, then start via the chosen method (default `compose`) |
-| `make down` / `stop` / `logs` / `status` | container lifecycle; `status` also runs `verify` |
+| `make sync` | rewrite image refs / build args / model ref in all file-based methods |
+| `make deploy-compose` / `make deploy-quadlet` | start via a file-based method instead of `make deploy` (compose honors the same three overrides); both refuse to take over the slot from another method |
+| `make deploy-test` / `make down-test` / `make bench` | :8001 validation container (plain `podman run`, active TAGS image) + A/B throughput; never touches the production container (identity collisions are refused) |
 
 Deploying a new tag:
 
@@ -58,7 +94,7 @@ the newest ROCm that ships a linux wheel for `GPU_TARGET` on AMD's pip
 index (`stable.repo.amd.com/rocm/whl-next/`) — newer ROCm releases are
 skipped until they add a wheel for this GPU (only `10.0.0` has `gfx1151`).
 If either is newer than `TAGS`, it rewrites `TAGS`, runs
-`make build && make deploy`, waits for `/health`, then commits
+`make build && make sync && make deploy`, waits for `/health`, then commits
 `TAGS` + the synced deploy files and adds an **annotated git tag named
 like the image tag** (e.g. `b10944-rocm-10.0.0`) — every deployed build
 is labeled in git history. If a git remote is added, commit + tag are
@@ -73,9 +109,11 @@ running container.
 - The Containerfile's default `BRANCH` and the quadlet `BuildArg=BRANCH=`
   are pinned to the same commit; `make sync` keeps the quadlet lines
   current.
-- `make deploy-quadlet` needs root: it installs the units into
-  `/etc/containers/systemd/llama-server/`, then starts
-  `llama-server-build.service` and `llama-server.service`.
+- `make deploy-quadlet` runs in the **user namespace** (no root): it
+  installs the units into `~/.config/containers/systemd/llama-server/`,
+  then starts `llama-server-build.service` and `llama-server.service` via
+  `systemctl --user` (linger is enabled for this user, so the service
+  survives logout).
 
 ## ROCm 10 via pip wheels
 
@@ -154,7 +192,8 @@ LLAMA_FAILED_TO_ALLOCATE / memory in use
 ```
 
 Only `--ipc=host` (the host's ~63GB /dev/shm namespace) works. This is why
-`llama-server.sh` works and the compose stack originally failed.
+a plain `podman run --ipc=host` works and the unpatched compose stack
+originally failed.
 
 - `podman-compose.yml` → `ipc: host`
 - **`podman-compose` v1.6.0 has a bug: it parses `ipc:` but never emits
@@ -228,6 +267,35 @@ environment:
   `blk.64.nextn.*`). Effective sampling comes from the model file
   (temp 1.0, top_p 0.95, top_k 20) plus the server default min_p 0.05.
 
+## 3. Thinking mode (Qwen3.8)
+
+Qwen3.8 is a **thinking** model. With the current configuration, thinking
+is always on — including when tools are enabled — and assistant reasoning
+traces are kept in conversation history. The server-level flags set in the
+24 `LLAMA_ARG_*` env vars:
+
+| Flag | Effect |
+|---|---|
+| `LLAMA_ARG_REASONING=on` | llama.cpp emits reasoning as a separate `reasoning` field in chat responses (reasoning is not disabled when tools are active) |
+| `LLAMA_ARG_REASONING_EFFORT=medium` | passes a `reasoning_effort` hint to the chat template |
+
+How the model's own chat template (arch `qwen35`, verified from the GGUF)
+interprets it:
+
+- **default effort is `xhigh`** — the template adds a "think carefully,
+  thorough analysis" system-prompt push; `medium` drops that push (it
+  injects no directive, so the model still thinks, just without the
+  "be thorough" nudge). It is a prompt-level hint, **not a token budget**.
+- `low` asks for concise thinking; `high`/`xhigh` add increasing
+  "think carefully" directives; any other value is rejected with a
+  template error.
+- Thinking is **not** suppressed when tools are present (the template has
+  no tools→no-thinking branch).
+
+`reasoning_effort` is a server-level setting (this build has no
+per-request field in its OpenAPI), so it is only changeable via the env
+vars — all deploy files must stay in sync (`make sync` / `make verify`).
+
 ## 4. Caveats
 
 - **Shared GPU contention:** the tuning pass in §2 was run while an older
@@ -236,13 +304,14 @@ environment:
   are only meaningful during quiet windows; relative ranking is stable.
 - **podman-compose patch durability:** see §1 — re-run
   `scripts/fedora-setup.sh` after any package reinstall/update.
-- **Deployment methods are aligned:** as of 2026-09-09 all three methods
-  (script, compose, quadlet) carry the same runtime config and the same
-  24 `LLAMA_ARG_*` env vars — the tuned values from §2 plus the Web UI /
-  agent feature flags, the b10884 env var audit fix (`LOAD_MODE` replaces the
-  dead `MMAP`; dead `TEMP`/`TOP_P`/`MIN_P` removed), and
-  `SPEC_TYPE=draft-mtp` (MTP speculative decoding). The old
-  script/quadlet variants (ctx 393216, n_parallel 2/4, no explicit KV
+- **Deployment methods are aligned:** the Makefile (default method) and all
+  file-based methods (compose, quadlet) carry the same runtime
+  config and the same 24 `LLAMA_ARG_*` env vars — the tuned values from §2
+  plus the Web UI / agent feature flags, the thinking flags from §3, the
+  b10884 env var audit fix (`LOAD_MODE` replaces the dead `MMAP`; dead
+  `TEMP`/`TOP_P`/`MIN_P` removed), and `SPEC_TYPE=draft-mtp` (MTP
+  speculative decoding). The old file-based
+  variants (ctx 393216, n_parallel 2/4, no explicit KV
   cache type, `LLAMA_ARG_MODELS_DIR`) were
   superseded; `MODELS_DIR` is a no-op for current llama-server builds
   (`-hf` resolution uses the HF cache dir, not `--models-dir`).
@@ -253,4 +322,5 @@ environment:
 - **Live stack aligned:** the running container was recreated on 2026-09-09
   via `podman compose up -d` with the full aligned 24-var env (adds
   `UI`/`AGENT`/`TOOLS` on top of the previously tuned set, plus the b10884
-  audit fix).
+  audit fix); `REASONING_EFFORT=medium` was added on top for thinking mode
+  (§3).

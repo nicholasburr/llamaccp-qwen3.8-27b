@@ -1,15 +1,21 @@
 # Podman Compose deployment of llama-server (ROCm, Strix Halo).
 #
-# One of three EQUIVALENT deployment methods — all define the identical
-# container (name, image, port 8000, devices, IPC, volumes, env); see
-# README.md. Run exactly ONE of them at a time:
-#   1. scripts/llama-server.sh         -> podman run
-#   2. this file                       -> podman compose up -d
-#   3. config/containers/systemd/...   -> quadlet (llama-server.service)
+# One of the file-based deployment methods — the Makefile (`make deploy`),
+# this file, and the quadlet units all define the identical container
+# (name, image, port 8000, devices, IPC, volumes, env); see README.md.
+# Run exactly ONE of them at a time:
+#   1. this file                       -> podman compose up -d
+#   2. config/containers/systemd/...   -> quadlet (llama-server.service)
 #
 #   podman compose up -d              # start (recreates if changed, like --replace)
 #   podman compose down               # stop & remove
 #   podman compose logs -f llama-server
+#
+#   Name/image/port honor the same three overrides as `make deploy`
+#   (CONTAINER_NAME, IMAGE, PORT); the defaults below keep this file in
+#   lockstep with TAGS via `make sync`:
+#     CONTAINER_NAME=my-server IMAGE=your/image:tag PORT=9000 \
+#       podman compose up -d
 
 secrets:
   huggingface-token:
@@ -21,13 +27,13 @@ networks:
 
 services:
   llama-server:
-    image: localhost/llama-server:b10902-rocm-10.0.0
-    container_name: llama-server
+    image: ${IMAGE:-localhost/llama-server:b10902-rocm-10.0.0}
+    container_name: ${CONTAINER_NAME:-llama-server}
     # Custom code to enable ipc: host in podman-compose. See fedora-setup.sh.
     ipc: host
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:8000"
     devices:
       - /dev/dri
       - /dev/kfd
@@ -71,6 +77,6 @@ services:
       LLAMA_ARG_AGENT: "on"
       LLAMA_ARG_TOOLS: "all"
       LLAMA_ARG_REASONING: "on"
-      LLAMA_ARG_THINK: "auto"
+      LLAMA_ARG_REASONING_EFFORT: "medium"
       LLAMA_ARG_JINJA: "on"
       LLAMA_ARG_TOP_K: "20"

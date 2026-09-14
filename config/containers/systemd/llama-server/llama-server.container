@@ -1,3 +1,7 @@
+# STATIC configuration — intentionally not parameterized.
+# Image= pins a build tag (never :latest; `make verify` enforces this).
+# The running service is only ever changed by the deliberate promotion
+# path:   make sync && make deploy
 [Unit]
 Description=Llama Server (ROCm 10.0.0)
 Wants=llama-server-build.service
@@ -46,7 +50,7 @@ Environment=LLAMA_ARG_UI_MCP_PROXY=on
 Environment=LLAMA_ARG_AGENT=on
 Environment=LLAMA_ARG_TOOLS=all
 Environment=LLAMA_ARG_REASONING=on
-Environment=LLAMA_ARG_THINK=auto
+Environment=LLAMA_ARG_REASONING_EFFORT=medium
 Environment=LLAMA_ARG_JINJA=on
 # Sampling (temp/top_p/min_p env vars do not exist in b10884; effective
 # values come from the model file: temp 1.0, top_p 0.95, top_k 20,
@@ -54,7 +58,10 @@ Environment=LLAMA_ARG_JINJA=on
 Environment=LLAMA_ARG_TOP_K=20
 
 [Service]
-Restart=unless-stopped
+# systemd Restart= values are not podman restart policies: the podman
+# "unless-stopped" policy maps to "always" here (both restart on any exit,
+# and neither restarts after an explicit stop or manager shutdown).
+Restart=always
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

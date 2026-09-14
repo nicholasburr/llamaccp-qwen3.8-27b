@@ -59,7 +59,7 @@ tuned-adm active
 # the 27B model at 256K+ context exhausts it and the container dies during
 # model load with:
 #   "Memory critical error ... Reason: Memory in use"  (SIGSEGV / exit 139)
-# scripts/llama-server.sh works only because it passes --ipc=host directly.
+# A plain `podman run --ipc=host` works; the compose path needs the patch below.
 # This section patches podman-compose so the compose file honors `ipc` too.
 #
 # CAVEAT: this edits a system file. If the podman-compose package is later

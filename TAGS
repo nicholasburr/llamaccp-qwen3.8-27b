@@ -6,7 +6,7 @@
 #
 # e.g. b10902-rocm-10.0.0
 #
-# Every deployment method (scripts/llama-server.sh, podman-compose.yml,
+# Every deployment method (podman-compose.yml,
 # config/containers/systemd/llama-server/*) is kept in sync with this file
 # by `make sync`. See README.md "Tagging & deployment".
 #

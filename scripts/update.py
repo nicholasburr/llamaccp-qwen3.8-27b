@@ -17,9 +17,11 @@ Zero input required. Each run:
   3. otherwise:
        a. rewrites TAGS (LLAMA_BUILD, LLAMA_COMMIT, ROCM_VERSION)
        b. make build      ->  image <LLAMA_BUILD>-rocm-<ROCM_VERSION> (+ latest)
-       c. make deploy     ->  recreates the production container (METHOD=compose)
-       d. waits for http://127.0.0.1:8000/health
-       e. git: commits TAGS + the synced deploy files and adds an annotated
+       c. make sync       ->  keep the file-based deploy methods in lockstep
+       d. promote the running production container via whichever method
+          owns the slot (quadlet / podman compose / plain podman run)
+       e. waits for http://127.0.0.1:8000/health
+       f. git: commits TAGS + the synced deploy files and adds an annotated
           tag named exactly like the image tag (e.g. b10944-rocm-10.0.0),
           matching the existing tag scheme. Pushes commit + tag if a git
           remote is configured (there is none yet — labels stay local).
@@ -49,9 +51,7 @@ HEALTH_URL = "http://127.0.0.1:8000/health"
 
 # deploy files rewritten by `make sync` (must mirror DEPLOY_FILES in the Makefile)
 DEPLOY_FILES = [
-    "scripts/llama-server.sh",
     "podman-compose.yml",
-    "podman-compose.test.yml",
     "config/containers/systemd/llama-server/llama-server.build",
     "config/containers/systemd/llama-server/llama-server.container",
 ]
@@ -149,6 +149,25 @@ def make(target: str) -> None:
     subprocess.run(["make", target], cwd=ROOT)
 
 
+def production_owner() -> str:
+    """Which deploy method owns the production slot (container llama-server)?
+
+    Returns "quadlet", "compose" or "podman" (plain / nothing running).
+    The Makefile deploy targets refuse to take over a slot owned by
+    another method, so promotion must go through the owning one.
+    """
+    if subprocess.run(["systemctl", "--user", "is-active", "--quiet", "llama-server.service"],
+                      capture_output=True).returncode == 0:
+        return "quadlet"
+    r = subprocess.run(
+        ["podman", "inspect", "llama-server", "--format",
+         '{{index .Config.Labels "io.podman.compose.project"}}'],
+        capture_output=True, text=True)
+    if r.stdout.strip():
+        return "compose"
+    return "podman"
+
+
 def wait_health(timeout_s: int = 420) -> None:
     deadline = time.time() + timeout_s
     log("waiting for production health ...")
@@ -210,11 +229,16 @@ def main() -> int:
     log(f"TAGS updated -> {new_tag}")
     try:
         make("build")
+        make("sync")
         if not args.no_deploy:
-            make("deploy")
+            owner = production_owner()
+            log(f"production slot owner: {owner}")
+            make({"quadlet": "deploy-quadlet",
+                  "compose": "deploy-compose",
+                  "podman": "deploy"}[owner])
             wait_health()
         else:
-            log("--no-deploy: container untouched; run `make deploy` to swap")
+            log("--no-deploy: container untouched; run the owning method's deploy target to swap")
     except UpdateError as e:
         log(f"ERROR: {e}")
         log("TAGS was rewritten — revert with: git checkout -- TAGS && make sync")
