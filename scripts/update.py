@@ -8,10 +8,9 @@ Zero input required. Each run:
        llama.cpp : newest `b<digits>` git tag on ggml-org/llama.cpp
                    (via `git ls-remote` — the b-tag stream is ahead of the
                    v-releases, and it matches the repo's existing pin scheme)
-       ROCm      : newest version with a linux wheel for the GPU_TARGET
-                   device package on AMD's pip index (whl-next) — newer
-                   ROCm releases are skipped until they ship a wheel for
-                   this GPU (e.g. gfx1151)
+       ROCm      : newest version with a linux wheel for the hardcoded GPU
+                   target (gfx1151) on AMD's pip index (whl-next) — newer
+                   ROCm releases are skipped until they ship a wheel for it
   2. diffs them against TAGS; if both are current, exits 0 (idempotent —
      safe to run from cron)
   3. otherwise:
@@ -48,6 +47,9 @@ TAGS = ROOT / "TAGS"
 LLAMA_REPO = "https://github.com/ggml-org/llama.cpp"
 ROCM_INDEX = "https://stable.repo.amd.com/rocm/whl-next/"
 HEALTH_URL = "http://127.0.0.1:8000/health"
+# Hardcoded GPU target: this repository builds ONLY for gfx1151 (AMD Strix
+# Halo / Ryzen AI Max+ 395). Not a per-build value — see the Containerfile.
+GPU_TARGET = "gfx1151"
 
 # deploy files rewritten by `make sync` (must mirror DEPLOY_FILES in the Makefile)
 DEPLOY_FILES = [
@@ -71,7 +73,7 @@ def read_tags() -> dict:
         m = re.match(r"^([A-Z_]+)=(.*)$", line)
         if m:
             vals[m.group(1)] = m.group(2).strip()
-    for key in ("LLAMA_BUILD", "LLAMA_COMMIT", "ROCM_VERSION", "GPU_TARGET"):
+    for key in ("LLAMA_BUILD", "LLAMA_COMMIT", "ROCM_VERSION"):
         if not vals.get(key):
             raise UpdateError(f"TAGS is missing {key}")
     return vals
@@ -196,7 +198,7 @@ def main() -> int:
 
     try:
         new_build, new_commit = latest_llama()
-        new_rocm = latest_rocm(cur["GPU_TARGET"])
+        new_rocm = latest_rocm(GPU_TARGET)
     except UpdateError as e:
         log(f"ERROR: {e}")
         return 1
@@ -233,9 +235,11 @@ def main() -> int:
         if not args.no_deploy:
             owner = production_owner()
             log(f"production slot owner: {owner}")
-            make({"quadlet": "deploy-quadlet",
-                  "compose": "deploy-compose",
-                  "podman": "deploy"}[owner])
+            if owner == "compose":
+                # compose is not a make target; recreate the container directly
+                subprocess.run(["podman", "compose", "up", "-d"], cwd=ROOT)
+            else:
+                make({"quadlet": "deploy-quadlet", "podman": "deploy"}[owner])
             wait_health()
         else:
             log("--no-deploy: container untouched; run the owning method's deploy target to swap")

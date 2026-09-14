@@ -11,10 +11,10 @@ SetWorkingDirectory=/home/nburr/Desktop/fedora/fedora-llamacpp
 ForceRM=true
 # Build args for containers/Containerfile.llama-server (same defaults as its
 # ARG lines; kept here so the build is explicit). `make sync` keeps ImageTag
-# and these BuildArg lines in lockstep with TAGS.
+# and these BuildArg lines in lockstep with TAGS. The GPU target (gfx1151) is
+# hardcoded in the Containerfile — it is not a build arg.
 BuildArg=FEDORA_VERSION=44
 BuildArg=ROCM_VERSION=10.0.0
-BuildArg=GPU_TARGET=gfx1151
 BuildArg=BRANCH=df03399b885831b2a1603b3abb0d8c156808e363
 
 [Service]

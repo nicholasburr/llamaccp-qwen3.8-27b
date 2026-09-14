@@ -6,26 +6,35 @@ Qwen3.8-27B-GGUF (UD-Q4_K_XL) on Strix Halo (Ryzen AI Max+ 395, 32GB UMA).
 ROCm 10 is installed **with pip wheels** (no repo.radeon.com RPMs) — see
 "ROCm 10 via pip wheels" below.
 
-The Makefile is the single interface for end users: it contains the full
-container definition (name, image, env, devices, IPC, volumes, secret) and
-needs at most three changes — `CONTAINER_NAME`, `IMAGE`, `PORT` — then:
+The GPU target is **hardcoded to `gfx1151`** (AMD Strix Halo / Ryzen AI Max+
+395): this repository only builds for that GPU, so it is not a configurable
+option in the Makefile, `TAGS`, or the Containerfile.
 
-    make deploy      # (re)create and start, wait for /health
+The Makefile is the single interface for end users. The default deployment is
+the **quadlet** method (user systemd, no root):
+
+    make deploy      # install the quadlet units and start the service
     make status      # container state
     make logs        # follow the logs
-    make stop / make down
+    make stop        # stop the service
 
-Two equivalent **file-based** methods remain for operators; they define
-the same container and are kept in lockstep with `TAGS` by `make sync`
-(maintainer section of the Makefile). All three methods target the same
-**production slot** — the container `llama-server` on :8000 — and run one
-method at a time:
+The container definition (name, image, env, devices, IPC, volumes, secret)
+lives in the quadlet units and `podman-compose.yml`. A **podman compose**
+deployment is an operator alternative — it is not a make target; see
+"podman compose deployment" below.
+
+There are two deployment methods; both define the identical container (name,
+image, port 8000, devices, IPC, volumes, env) and both target the same
+**production slot** — the container `llama-server` on :8000. Run exactly one
+at a time:
 
 | Method | File(s) | Start |
 |---|---|---|
-| podman run (default) | `Makefile` | `make deploy` (replaces running container) |
-| podman compose | `podman-compose.yml` | `make deploy-compose` (same `CONTAINER_NAME`/`IMAGE`/`PORT` overrides) |
-| quadlet (systemd --user) | `config/containers/systemd/llama-server/*.container`, `*.build` | `make deploy-quadlet` (user namespace — no root needed) |
+| quadlet (systemd --user, **default**) | `config/containers/systemd/llama-server/*.container`, `*.build` | `make deploy` (installs the units, no root needed) |
+| podman compose (operator alternative) | `podman-compose.yml` | `podman compose up -d` (manual — see "podman compose deployment" below) |
+
+Both are kept in lockstep with `TAGS` by `make sync` (maintainer section of
+the Makefile), so their image/model references never drift.
 
 > The quadlet units are installed in the user namespace but **not
 > enabled** on this machine; `make deploy` (plain `podman run`) is the
@@ -44,17 +53,18 @@ method at a time:
 
 ## The Makefile
 
-The Makefile is the single interface. The **end-user** part at the top holds
-the full container definition — at most three things need changing
-(`CONTAINER_NAME`, `IMAGE`, `PORT`) — and the **maintainer** part at the
-bottom builds and updates the image.
+The Makefile is the single interface. The **end-user** part at the top deploys
+the service via quadlet (the only thing you usually change is
+`CONTAINER_NAME`), and the **maintainer** part at the bottom builds and updates
+the image. The container definition itself lives in the quadlet units and
+`podman-compose.yml`.
 
 **End-user targets** (all you need to run the container):
 
 | Command | Effect |
 |---|---|
-| `make deploy` | (re)create and start the container (`podman run --replace`), wait for `/health`; override with `CONTAINER_NAME=`, `IMAGE=`, `PORT=` |
-| `make status` / `make logs` / `make stop` / `make down` | container lifecycle |
+| `make deploy` | install the quadlet units and start the service (user systemd, no root) |
+| `make status` / `make logs` / `make stop` | container lifecycle |
 
 **Maintainer targets** (build & update the image). The image tag is
 **computed, never hand-typed**. `TAGS` (repo root) is the single source of
@@ -72,13 +82,12 @@ methods, so the equivalent files can never drift on the image reference;
 |---|---|
 | `make show` | active tag + every image reference in the repo |
 | `make verify` | fail unless every file-based method references exactly the active tag |
-| `make new-build BUILD=b12345 COMMIT=<sha>` | point `TAGS` at a new llama.cpp build (optional `ROCM=`, `FEDORA=`, `GPU_TARGET=`) |
-| `make update` | zero-input update: discover the latest llama.cpp `b-tag` + newest ROCm with a `GPU_TARGET` wheel, update `TAGS`, build, sync, deploy, **label in git** (commit + tag) |
+| `make new-build BUILD=b12345 COMMIT=<sha>` | point `TAGS` at a new llama.cpp build (optional `ROCM=`, `FEDORA=`) |
+| `make update` | zero-input update: discover the latest llama.cpp `b-tag` + newest ROCm with a `gfx1151` wheel, update `TAGS`, build, sync, deploy, **label in git** (commit + tag) |
 | `make update-dry` | preview `make update` (discover + diff + plan; nothing is changed) |
 | `make build` | `podman build` with `BRANCH=<LLAMA_COMMIT>` pinned; tags `IMAGE` + `latest` |
 | `make tag FROM=<old-tag>` | retag an existing local image to the active tag (no rebuild) |
 | `make sync` | rewrite image refs / build args / model ref in all file-based methods |
-| `make deploy-compose` / `make deploy-quadlet` | start via a file-based method instead of `make deploy` (compose honors the same three overrides); both refuse to take over the slot from another method |
 | `make deploy-test` / `make down-test` / `make bench` | :8001 validation container (plain `podman run`, active TAGS image) + A/B throughput; never touches the production container (identity collisions are refused) |
 
 Deploying a new tag:
@@ -90,7 +99,7 @@ Deploying a new tag:
 **Automatic update — `make update` takes no arguments.** It discovers the
 latest llama.cpp (the newest `b<digits>` git tag on `ggml-org/llama.cpp`
 via `git ls-remote`; the b-tag stream runs ahead of the `v`-releases) and
-the newest ROCm that ships a linux wheel for `GPU_TARGET` on AMD's pip
+the newest ROCm that ships a linux wheel for `gfx1151` on AMD's pip
 index (`stable.repo.amd.com/rocm/whl-next/`) — newer ROCm releases are
 skipped until they add a wheel for this GPU (only `10.0.0` has `gfx1151`).
 If either is newer than `TAGS`, it rewrites `TAGS`, runs
@@ -114,6 +123,33 @@ running container.
   then starts `llama-server-build.service` and `llama-server.service` via
   `systemctl --user` (linger is enabled for this user, so the service
   survives logout).
+
+## podman compose deployment
+
+`podman compose` is the operator alternative to `make deploy` (quadlet). It is
+**not** a make target — run the compose CLI directly against
+`podman-compose.yml`:
+
+    podman compose up -d                 # start (recreates if changed, like --replace)
+    podman compose down                  # stop & remove
+    podman compose logs -f llama-server  # follow the logs
+    podman compose ps                    # status
+
+**Overrides.** The name, image and published port default to the `TAGS`
+lockstep values, but honor the same three environment-variable overrides:
+
+    CONTAINER_NAME=my-server IMAGE=your/image:tag PORT=9000 podman compose up -d
+
+**IPC patch (mandatory).** `podman-compose` v1.6.0 parses `ipc:` but never
+emits `--ipc` to the `podman run` argv, so the local install is patched (see
+§1, "The fix: IPC namespace"). Re-run `scripts/fedora-setup.sh` after any
+podman-compose reinstall/update, or the model fails to load.
+
+**Production slot.** Compose and quadlet share the same slot (container
+`llama-server` on :8000). `make deploy` refuses to start while a compose
+container is present. Taking the slot over deliberately is a two-step act:
+
+    systemctl --user disable --now llama-server.service && podman compose up -d
 
 ## ROCm 10 via pip wheels
 

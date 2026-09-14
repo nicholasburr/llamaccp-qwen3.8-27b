@@ -1,7 +1,3 @@
-# STATIC configuration — intentionally not parameterized.
-# Image= pins a build tag (never :latest; `make verify` enforces this).
-# The running service is only ever changed by the deliberate promotion
-# path:   make sync && make deploy
 [Unit]
 Description=Llama Server (ROCm 10.0.0)
 Wants=llama-server-build.service
