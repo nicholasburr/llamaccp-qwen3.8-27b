@@ -70,8 +70,8 @@ the image. The container definition itself lives in the quadlet units and
 **computed, never hand-typed**. `TAGS` (repo root) is the single source of
 truth for the build inputs; the Makefile derives:
 
-    IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>    e.g. b10902-rocm-10.0.0
-    IMAGE     = localhost/llama-server:b10902-rocm-10.0.0    (+ a `latest` alias)
+    IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>    e.g. v0.4.1-rocm-10.0.0
+    IMAGE     = localhost/llama-server:v0.4.1-rocm-10.0.0    (+ a `latest` alias)
 
 `make sync` rewrites the image reference — and the quadlet `BuildArg=` lines
 plus the `LLAMA_ARG_HF_REPO` model ref — in all file-based deployment
@@ -82,23 +82,25 @@ methods, so the equivalent files can never drift on the image reference;
 |---|---|
 | `make show` | active tag + every image reference in the repo |
 | `make verify` | fail unless every file-based method references exactly the active tag |
-| `make new-build BUILD=b12345 COMMIT=<sha>` | point `TAGS` at a new llama.cpp build (optional `ROCM=`, `FEDORA=`) |
-| `make update` | zero-input update: discover the latest llama.cpp `b-tag` + newest ROCm with a `gfx1151` wheel, update `TAGS`, build, sync, deploy, **label in git** (commit + tag) |
+| `make new-build TAG=<v-or-b-tag>` | point `TAGS` at a llama.cpp release (`vX.Y.Z`) or nightly (`bXXXXX`) tag (optional `ROCM=`, `FEDORA=`) |
+| `make update` | zero-input update: discover the latest llama.cpp release tag (`vX.Y.Z`) + newest ROCm with a `gfx1151` wheel, update `TAGS`, build, sync, deploy, **label in git** (commit + tag) |
 | `make update-dry` | preview `make update` (discover + diff + plan; nothing is changed) |
-| `make build` | `podman build` with `BRANCH=<LLAMA_COMMIT>` pinned; tags `IMAGE` + `latest` |
+| `make build` | `podman build` with `TAG=<LLAMA_BUILD>` (the llama.cpp release/nightly tag) pinned; tags `IMAGE` + `latest` |
 | `make tag FROM=<old-tag>` | retag an existing local image to the active tag (no rebuild) |
 | `make sync` | rewrite image refs / build args / model ref in all file-based methods |
 | `make deploy-test` / `make down-test` / `make bench` | :8001 validation container (plain `podman run`, active TAGS image) + A/B throughput; never touches the production container (identity collisions are refused) |
 
 Deploying a new tag:
 
-    make new-build BUILD=b12345 COMMIT=<sha>    # 1. point TAGS at the build
+    make new-build TAG=<v-or-b-tag>           # 1. point TAGS at the tag
     make build                                  # 2. build it — or `make tag FROM=<old-tag>` to reuse an existing image
     make deploy                                 # 3. recreate the container on the new tag
 
 **Automatic update — `make update` takes no arguments.** It discovers the
-latest llama.cpp (the newest `b<digits>` git tag on `ggml-org/llama.cpp`
-via `git ls-remote`; the b-tag stream runs ahead of the `v`-releases) and
+latest llama.cpp (the newest official release tag, `vX.Y.Z`, on
+`ggml-org/llama.cpp` via `git ls-remote` — the same tags shown as releases
+on github.com/ggml-org/llama.cpp/releases; a nightly `bXXXXX` can be pinned
+instead with `make new-build`) and
 the newest ROCm that ships a linux wheel for `gfx1151` on AMD's pip
 index (`stable.repo.amd.com/rocm/whl-next/`) — newer ROCm releases are
 skipped until they add a wheel for this GPU (only `10.0.0` has `gfx1151`).
@@ -112,12 +114,11 @@ pushed. Idempotent: exits 0 and does nothing when up to date (cron-safe).
 `scripts/update.py --no-deploy` builds + labels without touching the
 running container.
 
-- `LLAMA_BUILD` / `LLAMA_COMMIT` are read from the image's
-  `llama-server --version` output (`build 10896, commit fa6769818...`), so
-  the tag always describes the exact binary inside.
-- The Containerfile's default `BRANCH` and the quadlet `BuildArg=BRANCH=`
-  are pinned to the same commit; `make sync` keeps the quadlet lines
-  current.
+- `LLAMA_BUILD` is the llama.cpp git tag (release `vX.Y.Z` or nightly
+  `bXXXXX`) and `LLAMA_COMMIT` is the commit that tag resolves to, so the
+  image tag always describes the exact binary inside.
+- The Containerfile's default `TAG` and the quadlet `BuildArg=TAG=` are
+  pinned to the same tag; `make sync` keeps the quadlet lines current.
 - `make deploy-quadlet` runs in the **user namespace** (no root): it
   installs the units into `~/.config/containers/systemd/llama-server/`,
   then starts `llama-server-build.service` and `llama-server.service` via

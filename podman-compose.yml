@@ -27,13 +27,13 @@ networks:
 
 services:
   llama-server:
-    image: ${IMAGE:-localhost/llama-server:b10902-rocm-10.0.0}
+    image: ${IMAGE:-localhost/llama-server:v0.4.1-rocm-10.0.0}
     container_name: ${CONTAINER_NAME:-llama-server}
     # Custom code to enable ipc: host in podman-compose. See fedora-setup.sh.
     ipc: host
     restart: unless-stopped
     ports:
-      - "${PORT:-8001}:8000"
+      - "${PORT:-8000}:8000"
     devices:
       - /dev/dri
       - /dev/kfd
@@ -51,6 +51,27 @@ services:
     volumes:
       - /home/nburr/.cache/huggingface/hub/:/root/.cache/huggingface/hub/:Z
       - /home/nburr/.config/llama.cpp/:/root/.config/llama.cpp/:Z
+    # Sampling defaults (Qwen3.8-27B — Unsloth "thinking mode" values).
+    # In v0.4.1 the temp/top-p/min-p/penalty flags have NO LLAMA_ARG_* env var
+    # (only --top-k does), so they can't live in `environment:` — they must be
+    # passed as CLI args. The image ENTRYPOINT is `/usr/local/bin/llama-server`
+    # (no CMD), so compose `command:` appends these straight to it.
+    # Already baked into the model GGUF; pinned here so they're easy to tweak.
+    # For Instruct (non-thinking): --temp 0.7 --top-p 0.80 --presence-penalty 1.5
+    #   https://unsloth.ai/docs/models/qwen3.8#qwen3.8-27b-settings
+    command:
+      - --temp
+      - "1.0"
+      - --top-p
+      - "0.95"
+      - --top-k
+      - "20"
+      - --min-p
+      - "0.0"
+      - --presence-penalty
+      - "0.0"
+      - --repeat-penalty
+      - "1.0"
     environment:
       # Model
       LLAMA_ARG_HF_REPO: "unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL"
@@ -79,4 +100,3 @@ services:
       LLAMA_ARG_REASONING: "on"
       LLAMA_ARG_REASONING_EFFORT: "medium"
       LLAMA_ARG_JINJA: "on"
-      LLAMA_ARG_TOP_K: "20"

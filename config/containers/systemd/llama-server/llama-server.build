@@ -5,7 +5,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Build]
-ImageTag=localhost/llama-server:b10902-rocm-10.0.0
+ImageTag=localhost/llama-server:v0.4.1-rocm-10.0.0
 File=containers/Containerfile.llama-server
 SetWorkingDirectory=/home/nburr/Desktop/fedora/fedora-llamacpp
 ForceRM=true
@@ -15,7 +15,7 @@ ForceRM=true
 # hardcoded in the Containerfile — it is not a build arg.
 BuildArg=FEDORA_VERSION=44
 BuildArg=ROCM_VERSION=10.0.0
-BuildArg=BRANCH=df03399b885831b2a1603b3abb0d8c156808e363
+BuildArg=TAG=v0.4.1
 
 [Service]
 Type=simple

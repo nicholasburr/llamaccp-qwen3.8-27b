@@ -2,13 +2,14 @@
 ARG FEDORA_VERSION=44
 ARG ROCM_VERSION=10.0.0
 ARG REPO=https://github.com/ggml-org/llama.cpp.git
-# Pinned to the exact llama.cpp commit inside the current image (see TAGS:
-# b10902 -> tag b10902-rocm-10.0.0). `make build` always passes BRANCH
+# Pinned to the llama.cpp git TAG inside the current image (see TAGS:
+# v0.4.1 -> tag v0.4.1-rocm-10.0.0). `make build` always passes TAG
 # explicitly; this default keeps manual `podman build` reproducible too.
-# Bump both via `make new-build BUILD=... COMMIT=...`.
-# BRANCH is a full commit SHA (checked out after clone — `clone -b <sha>`
-# treats it as a branch name and fails, so we clone all refs first).
-ARG BRANCH=df03399b885831b2a1603b3abb0d8c156808e363
+# Bump via `make new-build TAG=<v-or-b-tag>`.
+# TAG is a llama.cpp release tag (vX.Y.Z) or a nightly tag (bXXXXX); it is
+# checked out after clone (all refs are fetched first, so a tag is always
+# resolvable — unlike `clone -b <sha>`, which treats the ref as a branch).
+ARG TAG=v0.4.1
 # The GPU target is hardcoded to gfx1151 (AMD Strix Halo / Ryzen AI Max+ 395) —
 # this repository builds ONLY for gfx1151, so it is not a build arg.
 # AMD's ROCm pip-wheel index (PEP 503). ROCm is installed with pip instead of
@@ -18,7 +19,7 @@ ARG ROCM_PIP_INDEX=https://stable.repo.amd.com/rocm/whl-next/
 # --- BUILDER STAGE ---
 FROM registry.fedoraproject.org/fedora:${FEDORA_VERSION} AS builder
 ARG REPO
-ARG BRANCH
+ARG TAG
 ARG ROCM_VERSION
 ARG ROCM_PIP_INDEX
 
@@ -66,13 +67,13 @@ RUN /opt/rocm-venv/bin/rocm-sdk path --root > /opt/.rocm-dev-root && \
 
 WORKDIR /opt/llama.cpp
 RUN git clone --recursive ${REPO} . && \
-    git checkout --detach ${BRANCH} && \
+    git checkout --detach ${TAG} && \
     git clean -xdf && git submodule update --recursive
 
 # Build llama.cpp against the pip-installed ROCm (same flags as the old
 # RPM-based build, pointed at the wheel's SDK root).
 #
-# Options at the pinned build (b10902):
+# Options at the pinned release (v0.4.1):
 #   - LLAMA_BUILD_SERVER=ON gates tools/server (+ cli + ui); llama-server,
 #     llama and llama-bench all live in tools/, so LLAMA_BUILD_EXAMPLES=OFF.
 #   - GGML_HIP_GRAPHS is ON by default; set explicitly (iGPU launch overhead).

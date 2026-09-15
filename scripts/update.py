@@ -5,9 +5,9 @@ update.py — build & deploy the latest llama.cpp + ROCm, labeled in git.
 Zero input required. Each run:
 
   1. discovers the latest upstream versions:
-       llama.cpp : newest `b<digits>` git tag on ggml-org/llama.cpp
-                   (via `git ls-remote` — the b-tag stream is ahead of the
-                   v-releases, and it matches the repo's existing pin scheme)
+       llama.cpp : newest official release tag (vX.Y.Z) on ggml-org/llama.cpp
+                   (via `git ls-remote` — the same tags shown as releases on
+                   github.com/ggml-org/llama.cpp/releases). A specific nightly (bXXXXX) can be pinned instead with `make new-build`.
        ROCm      : newest version with a linux wheel for the hardcoded GPU
                    target (gfx1151) on AMD's pip index (whl-next) — newer
                    ROCm releases are skipped until they ship a wheel for it
@@ -91,24 +91,46 @@ def write_tags(vals: dict) -> None:
     TAGS.write_text("".join(lines))
 
 
+def _vtag_key(tag: str) -> tuple:
+    """Semver sort key for a 'vX.Y.Z' tag (leading 'v' stripped)."""
+    return tuple(int(p) for p in tag[1:].split("."))
+
+
 def latest_llama() -> tuple:
-    """Newest b<digits> tag on ggml-org/llama.cpp -> (tag, full commit sha)."""
-    log(f"querying {LLAMA_REPO} for newest b-tag ...")
+    """Newest official release tag (vX.Y.Z) on ggml-org/llama.cpp.
+
+    Returns (tag, full commit sha). The commit is resolved by peeling the
+    tag: release tags are annotated and advertise a 'refs/tags/<tag>^{}'
+    ref (the commit), while lightweight tags (e.g. b*-nightlies) have no
+    peel and the tag ref itself is the commit.
+    """
+    log(f"querying {LLAMA_REPO} for newest release tag (vX.Y.Z) ...")
     out = subprocess.run(
         ["git", "ls-remote", "--tags", LLAMA_REPO],
         capture_output=True, text=True, timeout=120,
     )
     if out.returncode != 0:
         raise UpdateError(f"git ls-remote failed: {out.stderr.strip()}")
-    best = None
+    tag_obj, tag_commit = {}, {}
     for line in out.stdout.splitlines():
-        m = re.match(r"^([0-9a-f]{40})\s+refs/tags/(b[0-9]+)$", line)
-        if m and (best is None or int(m.group(2)[1:]) > int(best[0][1:])):
-            best = (m.group(2), m.group(1))
+        m = re.match(r"^([0-9a-f]{40})\s+refs/tags/(.+?)(\^\{\})?$", line)
+        if not m:
+            continue
+        sha, ref, peeled = m.group(1), m.group(2), m.group(3)
+        if peeled:
+            tag_commit[ref] = sha            # annotated tag: commit it points to
+        else:
+            tag_obj[ref] = sha               # the tag ref itself
+            tag_commit.setdefault(ref, sha)  # lightweight tag: ref IS the commit
+    best = None
+    for tag in tag_obj:
+        if re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+            if best is None or _vtag_key(tag) > _vtag_key(best):
+                best = tag
     if best is None:
-        raise UpdateError("no b<digits> tags found on ggml-org/llama.cpp")
-    log(f"latest llama.cpp: {best[0]} ({best[1][:9]})")
-    return best
+        raise UpdateError("no vX.Y.Z release tags found on ggml-org/llama.cpp")
+    log(f"latest llama.cpp release: {best} ({tag_commit[best][:9]})")
+    return best, tag_commit[best]
 
 
 def _version_key(v: str) -> tuple:

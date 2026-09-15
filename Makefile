@@ -46,14 +46,14 @@ CONTAINER_NAME ?= llama-server
 
 .PHONY: help deploy status logs stop
 
-help: ## show the available targets
+help: ## Print this list. 
 	@echo "container: $(CONTAINER_NAME)"
 	@echo
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | \
 		awk '{ n=index($$0, ":"); h=index($$0, "## "); \
 		       printf "  make %-42s %s\n", substr($$0,1,n-1), substr($$0,h+3) }'
 
-deploy: ## install quadlet units and start the service (user systemd — no root needed)
+deploy: ## Deploy the container as a systemd service.
 	@if podman ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$(CONTAINER_NAME)"; then \
 		if ! systemctl --user is-active --quiet llama-server.service 2>/dev/null; then \
 			echo "REFUSED: a non-systemd container named '$(CONTAINER_NAME)' is present (compose or plain podman)"; \
@@ -61,8 +61,7 @@ deploy: ## install quadlet units and start the service (user systemd — no root
 			exit 1; \
 		fi; \
 	fi
-	podman quadlet install --application=llama-server --replace $(QUADLET_SRC)/
-	systemctl --user daemon-reload
+	podman quadlet install --application=llama-server --replace $(QUADLET_SRC) --daemon-reload/
 	systemctl --user start llama-server-build.service
 	systemctl --user start llama-server.service
 	@# Warn if linger is not enabled (services only start at login, not at boot)
@@ -74,14 +73,24 @@ deploy: ## install quadlet units and start the service (user systemd — no root
 		echo "             sudo loginctl enable-linger $$USER"; \
 		echo; \
 	fi
+status: ## Display status of current environment. 
+	@echo "Build configuration:"
+	@echo "  IMAGE_NAME : $(TAGGED_IMAGE)"
+	@echo "  LLAMA_BUILD    : $(LLAMA_BUILD)  (commit $(LLAMA_COMMIT))"
+	@echo "  ROCM_VERSION   : $(ROCM_VERSION)"
+	@echo "  FEDORA_VERSION : $(FEDORA_VERSION)"
+	@echo "  MODEL          : $(MODEL)"
+	@echo
+	@echo "Available images:"
+	@podman image list --filter reference=llama-server --format '  {{.Tag}} | {{.ID}} | {{.Created}}' | grep -v latest 
+	@echo
+	@echo "Deployed container:"
+	@podman ps -a --filter name=^/$(CONTAINER_NAME) --format '  {{.Names}} | {{.Image}} | {{.Status}}'
 
-status: ## show container state
-	podman ps -a --filter name=^/$(CONTAINER_NAME) --format '  {{.Names}} | {{.Image}} | {{.Status}}'
-
-logs: ## follow the container logs
+logs: ## Print systemd logs. 
 	journalctl --user -fu llama-server.service
 
-stop: ## stop the service
+stop: ## Stop the service
 	systemctl --user stop llama-server.service
 
 # ============================================================================
@@ -89,9 +98,9 @@ stop: ## stop the service
 #
 #  TAGS is the single source of truth for the image contents:
 #
-#      IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>     e.g. b10902-rocm-10.0.0
+#      IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>     e.g. v0.4.1-rocm-10.0.0
 #
-#  Zero-input update (discovers the latest llama.cpp b-tag and the newest
+#  Zero-input update (discovers the latest llama.cpp release tag (vX.Y.Z)
 #  ROCm with a gfx1151 wheel, builds, syncs, deploys, and labels the
 #  result in git — commit + annotated tag named like the image):
 #
@@ -103,7 +112,7 @@ stop: ## stop the service
 # ============================================================================
 
 TAGS := TAGS
-
+LLAMA_REPO := https://github.com/ggml-org/llama.cpp.git
 # Read KEY=VALUE from TAGS.
 tagvar = $(strip $(shell awk -F= -v k="$(1)" '$$1==k{print $$2; exit}' $(TAGS) 2>/dev/null))
 
@@ -125,30 +134,6 @@ DEPLOY_FILES  := podman-compose.yml \
 
 .PHONY: show verify sync build tag new-build update update-dry
 
-show: ## [maintainer] show the active image and every image reference in the repo
-	@echo "IMAGE_NAME : $(TAGGED_IMAGE)"
-	@echo "LLAMA_BUILD    : $(LLAMA_BUILD)  (commit $(LLAMA_COMMIT))"
-	@echo "ROCM_VERSION   : $(ROCM_VERSION)"
-	@echo "FEDORA_VERSION : $(FEDORA_VERSION)"
-	@echo "MODEL          : $(MODEL)"
-	@echo
-	@echo "image references in deploy files:"
-	@grep -HnoE '$(IMAGE_NAME):[A-Za-z0-9._-]+' $(DEPLOY_FILES) | sed 's/^/  /'
-	@echo
-	@if grep -qE '^Image=.*:latest' $(QUADLET_SRC)/llama-server.container; then \
-		echo "ERROR: quadlet config must pin a build tag (Image=localhost/llama-server:b...-rocm-...), never :latest"; \
-		exit 1; \
-	fi
-	@refs=$$(grep -hoE '$(IMAGE_NAME):[A-Za-z0-9._-]+' $(DEPLOY_FILES) | sort -u); \
-	n=$$(printf '%s\n' "$$refs" | grep -c . || true); \
-	echo "Deploy files reference $$n distinct tag(s):"; \
-	printf '%s\n' "$$refs" | sed 's/^/  /'; \
-	if [ "$$n" -eq 1 ] && [ "$$refs" = "$(TAGGED_IMAGE)" ]; then \
-		echo "OK — all methods in sync with $(TAGGED_IMAGE)"; \
-	else \
-		echo "DRIFT — expected only $(TAGGED_IMAGE); fix with: make sync"; exit 1; \
-	fi
-
 sync: ## [maintainer] rewrite image tag, build args and model ref in all file-based methods to match TAGS
 	@echo "syncing deploy files -> $(TAGGED_IMAGE)"; \
 	for f in $(DEPLOY_FILES); do \
@@ -157,7 +142,8 @@ sync: ## [maintainer] rewrite image tag, build args and model ref in all file-ba
 	sed -i -E \
 		-e "s|^BuildArg=FEDORA_VERSION=.*|BuildArg=FEDORA_VERSION=$(FEDORA_VERSION)|" \
 		-e "s|^BuildArg=ROCM_VERSION=.*|BuildArg=ROCM_VERSION=$(ROCM_VERSION)|" \
-		-e "s|^BuildArg=BRANCH=.*|BuildArg=BRANCH=$(LLAMA_COMMIT)|" \
+		-e "s|^BuildArg=BRANCH=.*|BuildArg=TAG=$(LLAMA_BUILD)|" \
+		-e "s|^BuildArg=TAG=.*|BuildArg=TAG=$(LLAMA_BUILD)|" \
 		$(QUADLET_SRC)/llama-server.build; \
 	old=$$(awk -F'"' '/LLAMA_ARG_HF_REPO/{print $$2; exit}' podman-compose.yml); \
 	if [ -n "$$old" ] && [ "$$old" != "$(MODEL)" ]; then \
@@ -181,25 +167,21 @@ build: ## [maintainer] build the active TAGS image (+ :latest), pinned to the co
 	podman build -f $(CONTAINERFILE) \
 		--build-arg FEDORA_VERSION=$(FEDORA_VERSION) \
 		--build-arg ROCM_VERSION=$(ROCM_VERSION) \
-		--build-arg BRANCH=$(LLAMA_COMMIT) \
+		--build-arg TAG=$(LLAMA_BUILD) \
 		-t $(TAGGED_IMAGE) \
-		-t $(IMAGE_NAME):latest \
 		.
 
-tag: ## [maintainer] retag an existing local image as the active TAGS image (no rebuild): make tag FROM=rocm-10.0.0
-	@test -n "$(FROM)" || { echo "usage: make tag FROM=<current-tag>   (e.g. FROM=rocm-10.0.0)"; exit 2; }
-	podman tag $(IMAGE_NAME):$(FROM) $(TAGGED_IMAGE)
-	podman tag $(IMAGE_NAME):$(FROM) $(IMAGE_NAME):latest
-	@podman images --format '{{.Repository}}:{{.Tag}}  ({{.Size}})' | grep -F "$(IMAGE_NAME):" | sed 's/^/  /'
-
-new-build: ## [maintainer] point TAGS at a new llama.cpp build: make new-build BUILD=b12345 COMMIT=<sha> [ROCM=x.y.z] [FEDORA=n]
-	@test -n "$(BUILD)" && test -n "$(COMMIT)" || { echo "usage: make new-build BUILD=b12345 COMMIT=<sha> [ROCM=x.y.z] [FEDORA=n]"; exit 2; }
-	@sed -i "s|^LLAMA_BUILD=.*|LLAMA_BUILD=$(BUILD)|" $(TAGS)
-	@sed -i "s|^LLAMA_COMMIT=.*|LLAMA_COMMIT=$(COMMIT)|" $(TAGS)
-	@test -z "$(ROCM)"       || sed -i "s|^ROCM_VERSION=.*|ROCM_VERSION=$(ROCM)|"     $(TAGS)
-	@test -z "$(FEDORA)"     || sed -i "s|^FEDORA_VERSION=.*|FEDORA_VERSION=$(FEDORA)|" $(TAGS)
-	@echo "TAGS updated -> $(IMAGE_NAME):$(BUILD)-rocm-$$(awk -F= -v k=ROCM_VERSION '$$1==k{print $$2}' $(TAGS))"
-	@echo "next: make build && make deploy"
+parametric-build: ## [maintainer] point TAGS at a llama.cpp tag (release vX.Y.Z or nightly bXXXXX): make new-build TAG=v0.4.1 [ROCM=x.y.z] [FEDORA=n]
+	@test -n "$(TAG)" || { echo "usage: make new-build TAG=<v-or-b-tag> [ROCM=x.y.z] [FEDORA=n]"; exit 2; }
+	@{ c=$$(git ls-remote $(LLAMA_REPO) "refs/tags/$(TAG)^{}" 2>/dev/null | awk '{print $$1}' | head -1); \
+	  [ -n "$$c" ] || c=$$(git ls-remote $(LLAMA_REPO) "refs/tags/$(TAG)" 2>/dev/null | awk '{print $$1}' | head -1); \
+	  if [ -z "$$c" ]; then echo "ERROR: tag '$(TAG)' not found on $(LLAMA_REPO)"; exit 2; fi; \
+	  sed -i "s|^LLAMA_BUILD=.*|LLAMA_BUILD=$(TAG)|" $(TAGS); \
+	  sed -i "s|^LLAMA_COMMIT=.*|LLAMA_COMMIT=$$c|" $(TAGS); \
+	  { test -z "$(ROCM)" || sed -i "s|^ROCM_VERSION=.*|ROCM_VERSION=$(ROCM)|" $(TAGS); }; \
+	  { test -z "$(FEDORA)" || sed -i "s|^FEDORA_VERSION=.*|FEDORA_VERSION=$(FEDORA)|" $(TAGS); }; \
+	  echo "TAGS updated -> $(IMAGE_NAME):$(TAG)-rocm-$$(awk -F= -v k=ROCM_VERSION '$$1==k{print $$2}' $(TAGS))  (commit $$c)"; \
+	  echo "next: make build && make deploy"; }
 
 update: ## [maintainer] zero input: latest llama.cpp + ROCm; build, sync, deploy, label in git (commit + tag)
 	python3 scripts/update.py
