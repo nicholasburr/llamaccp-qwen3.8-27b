@@ -76,7 +76,7 @@ deploy: ## Deploy the container as a systemd service.
 status: ## Display status of current environment. 
 	@echo "Build configuration:"
 	@echo "  IMAGE_NAME : $(TAGGED_IMAGE)"
-	@echo "  LLAMA_BUILD    : $(LLAMA_BUILD)  (commit $(LLAMA_COMMIT))"
+	@echo "  LLAMA_TAG      : $(LLAMA_TAG)"
 	@echo "  ROCM_VERSION   : $(ROCM_VERSION)"
 	@echo "  FEDORA_VERSION : $(FEDORA_VERSION)"
 	@echo "  MODEL          : $(MODEL)"
@@ -98,7 +98,7 @@ stop: ## Stop the service
 #
 #  TAGS is the single source of truth for the image contents:
 #
-#      IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>     e.g. v0.4.1-rocm-10.0.0
+#      IMAGE_TAG = <LLAMA_TAG>-rocm-<ROCM_VERSION>     e.g. v0.4.1-rocm-10.0.0
 #
 #  Zero-input update (discovers the latest llama.cpp release tag (vX.Y.Z)
 #  ROCm with a gfx1151 wheel, builds, syncs, deploys, and labels the
@@ -117,13 +117,12 @@ LLAMA_REPO := https://github.com/ggml-org/llama.cpp.git
 tagvar = $(strip $(shell awk -F= -v k="$(1)" '$$1==k{print $$2; exit}' $(TAGS) 2>/dev/null))
 
 IMAGE_NAME     := $(call tagvar,IMAGE_NAME)
-LLAMA_BUILD    := $(call tagvar,LLAMA_BUILD)
-LLAMA_COMMIT   := $(call tagvar,LLAMA_COMMIT)
+LLAMA_TAG      := $(call tagvar,LLAMA_TAG)
 ROCM_VERSION   := $(call tagvar,ROCM_VERSION)
 FEDORA_VERSION := $(call tagvar,FEDORA_VERSION)
 MODEL          := $(call tagvar,MODEL)
 
-IMAGE_TAG    := $(LLAMA_BUILD)-rocm-$(ROCM_VERSION)
+IMAGE_TAG    := $(LLAMA_TAG)-rocm-$(ROCM_VERSION)
 TAGGED_IMAGE := $(IMAGE_NAME):$(IMAGE_TAG)
 
 CONTAINERFILE := containers/Containerfile.llama-server
@@ -142,8 +141,8 @@ sync: ## [maintainer] rewrite image tag, build args and model ref in all file-ba
 	sed -i -E \
 		-e "s|^BuildArg=FEDORA_VERSION=.*|BuildArg=FEDORA_VERSION=$(FEDORA_VERSION)|" \
 		-e "s|^BuildArg=ROCM_VERSION=.*|BuildArg=ROCM_VERSION=$(ROCM_VERSION)|" \
-		-e "s|^BuildArg=BRANCH=.*|BuildArg=TAG=$(LLAMA_BUILD)|" \
-		-e "s|^BuildArg=TAG=.*|BuildArg=TAG=$(LLAMA_BUILD)|" \
+		-e "s|^BuildArg=BRANCH=.*|BuildArg=TAG=$(LLAMA_TAG)|" \
+		-e "s|^BuildArg=TAG=.*|BuildArg=TAG=$(LLAMA_TAG)|" \
 		$(QUADLET_SRC)/llama-server.build; \
 	old=$$(awk -F'"' '/LLAMA_ARG_HF_REPO/{print $$2; exit}' podman-compose.yml); \
 	if [ -n "$$old" ] && [ "$$old" != "$(MODEL)" ]; then \
@@ -167,7 +166,7 @@ build: ## [maintainer] build the active TAGS image (+ :latest), pinned to the co
 	podman build -f $(CONTAINERFILE) \
 		--build-arg FEDORA_VERSION=$(FEDORA_VERSION) \
 		--build-arg ROCM_VERSION=$(ROCM_VERSION) \
-		--build-arg TAG=$(LLAMA_BUILD) \
+		--build-arg TAG=$(LLAMA_TAG) \
 		-t $(TAGGED_IMAGE) \
 		.
 
@@ -176,11 +175,10 @@ parametric-build: ## [maintainer] point TAGS at a llama.cpp tag (release vX.Y.Z 
 	@{ c=$$(git ls-remote $(LLAMA_REPO) "refs/tags/$(TAG)^{}" 2>/dev/null | awk '{print $$1}' | head -1); \
 	  [ -n "$$c" ] || c=$$(git ls-remote $(LLAMA_REPO) "refs/tags/$(TAG)" 2>/dev/null | awk '{print $$1}' | head -1); \
 	  if [ -z "$$c" ]; then echo "ERROR: tag '$(TAG)' not found on $(LLAMA_REPO)"; exit 2; fi; \
-	  sed -i "s|^LLAMA_BUILD=.*|LLAMA_BUILD=$(TAG)|" $(TAGS); \
-	  sed -i "s|^LLAMA_COMMIT=.*|LLAMA_COMMIT=$$c|" $(TAGS); \
+	  sed -i "s|^LLAMA_TAG=.*|LLAMA_TAG=$(TAG)|" $(TAGS); \
 	  { test -z "$(ROCM)" || sed -i "s|^ROCM_VERSION=.*|ROCM_VERSION=$(ROCM)|" $(TAGS); }; \
 	  { test -z "$(FEDORA)" || sed -i "s|^FEDORA_VERSION=.*|FEDORA_VERSION=$(FEDORA)|" $(TAGS); }; \
-	  echo "TAGS updated -> $(IMAGE_NAME):$(TAG)-rocm-$$(awk -F= -v k=ROCM_VERSION '$$1==k{print $$2}' $(TAGS))  (commit $$c)"; \
+	  echo "TAGS updated -> $(IMAGE_NAME):$(TAG)-rocm-$$(awk -F= -v k=ROCM_VERSION '$$1==k{print $$2}' $(TAGS))"; \
 	  echo "next: make build && make deploy"; }
 
 update: ## [maintainer] zero input: latest llama.cpp + ROCm; build, sync, deploy, label in git (commit + tag)

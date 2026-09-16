@@ -2,15 +2,14 @@
 #
 # The image tag is computed by the Makefile (never hand-typed):
 #
-#     IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>
+#     IMAGE_TAG = <LLAMA_TAG>-rocm-<ROCM_VERSION>
 #
 # e.g. v0.4.1-rocm-10.0.0
 #
-# LLAMA_BUILD is the llama.cpp git tag the image is built from — by default
+# LLAMA_TAG is the llama.cpp git tag the image is built from — by default
 # an official release tag (vX.Y.Z, from github.com/ggml-org/llama.cpp/
 # releases); a nightly (bXXXXX) may be pinned for a one-off build via
-# `make new-build TAG=<tag>`. LLAMA_COMMIT is the commit that tag resolves
-# to (provenance — the build checks out the tag by name).
+# `make new-build TAG=<tag>`.
 #
 # Every deployment method (podman-compose.yml,
 # config/containers/systemd/llama-server/*) is kept in sync with this file
@@ -20,12 +19,11 @@
 #     make new-build TAG=<v-or-b-tag>
 #     make build && make deploy
 #
-# `make update` (scripts/update.py) bumps LLAMA_BUILD to the newest release
-# tag and LLAMA_COMMIT to the commit it points to.
+# `make update` (scripts/update.py) bumps LLAMA_TAG to the newest release
+# tag.
 
 IMAGE_NAME=localhost/llama-server
-LLAMA_BUILD=v0.4.1
-LLAMA_COMMIT=b29c606e28a01b1bc8c1351026a0fa6e616bf6c4
+LLAMA_TAG=v0.4.1
 ROCM_VERSION=10.0.0
 FEDORA_VERSION=44
 MODEL=unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL
