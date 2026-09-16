@@ -1,15 +1,15 @@
-# Podman Compose deployment of llama-server (ROCm, Strix Halo).
+# Podman Compose deployment of qwen3.8-27b (ROCm, Strix Halo).
 #
 # One of the file-based deployment methods — the Makefile (`make deploy`),
 # this file, and the quadlet units all define the identical container
 # (name, image, port 8000, devices, IPC, volumes, env); see README.md.
 # Run exactly ONE of them at a time:
 #   1. this file                       -> podman compose up -d
-#   2. config/containers/systemd/...   -> quadlet (llama-server.service)
+#   2. config/containers/systemd/...   -> quadlet (qwen3.8-27b.service)
 #
 #   podman compose up -d              # start (recreates if changed, like --replace)
 #   podman compose down               # stop & remove
-#   podman compose logs -f llama-server
+#   podman compose logs -f qwen3.8-27b
 #
 #   Name/image/port honor the same three overrides as `make deploy`
 #   (CONTAINER_NAME, IMAGE, PORT); the defaults below keep this file in
@@ -21,14 +21,10 @@ secrets:
   huggingface-token:
     external: true
 
-networks:
-  llama-network:
-    external: true
-
 services:
-  llama-server:
-    image: ${IMAGE:-localhost/llama-server:v0.4.1-rocm-10.0.0}
-    container_name: ${CONTAINER_NAME:-llama-server}
+  qwen3.8-27b:
+    image: ${IMAGE:-localhost/qwen3.8-27b:v0.4.1-rocm-10.0.0}
+    container_name: ${CONTAINER_NAME:-qwen3.8-27b}
     # Custom code to enable ipc: host in podman-compose. See fedora-setup.sh.
     ipc: host
     restart: unless-stopped
@@ -42,8 +38,6 @@ services:
       - render
     security_opt:
       - seccomp=unconfined
-    networks:
-      - llama-network
     secrets:
       - source: huggingface-token
         type: env

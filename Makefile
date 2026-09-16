@@ -1,5 +1,5 @@
 # ============================================================================
-#  fedora-llamacpp — run a llama.cpp (ROCm, gfx1151) container on Podman
+#  llamacpp-qwen3.8-27b — run a llama.cpp (ROCm, gfx1151) container on Podman
 #
 #  USERS
 #  -----
@@ -7,7 +7,7 @@
 #  container definition lives in the quadlet units and podman-compose.yml.
 #
 #  The only end-user knob is the container name:
-#      CONTAINER_NAME ?= llama-server
+#      CONTAINER_NAME ?= qwen3.8-27b
 #
 #  A plain `podman compose` deployment (podman-compose.yml) is an operator
 #  alternative. It is NOT a make target — see README.md, "podman compose
@@ -33,10 +33,10 @@ MAKEFLAGS += --no-builtin-rules
 .DEFAULT_GOAL := help
 
 # ---------------------------------------------------------------------------
-#  Container name (used by status/build/preflight; default llama-server)
+#  Container name (used by status/build/preflight; default qwen3.8-27b)
 # ---------------------------------------------------------------------------
 
-CONTAINER_NAME ?= llama-server
+CONTAINER_NAME ?= qwen3.8-27b
 
 # ---------------------------------------------------------------------------
 #  Fixed configuration — model + tuned runtime (see README.md, sections 2-4)
@@ -55,15 +55,15 @@ help: ## Print this list.
 
 deploy: ## Deploy the container as a systemd service.
 	@if podman ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$(CONTAINER_NAME)"; then \
-		if ! systemctl --user is-active --quiet llama-server.service 2>/dev/null; then \
+		if ! systemctl --user is-active --quiet qwen3.8-27b.service 2>/dev/null; then \
 			echo "REFUSED: a non-systemd container named '$(CONTAINER_NAME)' is present (compose or plain podman)"; \
 			echo "         stop it first — podman compose down   — then re-run make deploy"; \
 			exit 1; \
 		fi; \
 	fi
-	podman quadlet install --application=llama-server --replace $(QUADLET_SRC) --daemon-reload/
-	systemctl --user start llama-server-build.service
-	systemctl --user start llama-server.service
+	podman quadlet install --application=qwen3.8-27b --reload-systemd --replace $(QUADLET_SRC)
+	systemctl --user start qwen3.8-27b-build.service
+	systemctl --user start qwen3.8-27b.service
 	@# Warn if linger is not enabled (services only start at login, not at boot)
 	if ! loginctl show-user "$$USER" -p Linger --value 2>/dev/null | grep -qx yes; then \
 		echo; \
@@ -82,16 +82,16 @@ status: ## Display status of current environment.
 	@echo "  MODEL          : $(MODEL)"
 	@echo
 	@echo "Available images:"
-	@podman image list --filter reference=llama-server --format '  {{.Tag}} | {{.ID}} | {{.Created}}' | grep -v latest 
+	@podman image list --filter reference=qwen3.8-27b --format '  {{.Tag}} | {{.ID}} | {{.Created}}' | grep -v latest || true
 	@echo
 	@echo "Deployed container:"
 	@podman ps -a --filter name=^/$(CONTAINER_NAME) --format '  {{.Names}} | {{.Image}} | {{.Status}}'
 
 logs: ## Print systemd logs. 
-	journalctl --user -fu llama-server.service
+	journalctl --user -fu qwen3.8-27b.service
 
 stop: ## Stop the service
-	systemctl --user stop llama-server.service
+	systemctl --user stop qwen3.8-27b.service
 
 # ============================================================================
 #  MAINTAINER — build & update the image (not needed to run the container)
@@ -125,11 +125,11 @@ MODEL          := $(call tagvar,MODEL)
 IMAGE_TAG    := $(LLAMA_TAG)-rocm-$(ROCM_VERSION)
 TAGGED_IMAGE := $(IMAGE_NAME):$(IMAGE_TAG)
 
-CONTAINERFILE := containers/Containerfile.llama-server
-QUADLET_SRC   := config/containers/systemd/llama-server
+CONTAINERFILE := containers/Containerfile.qwen3.8-27b
+QUADLET_SRC   := config/containers/systemd/qwen3.8-27b
 DEPLOY_FILES  := podman-compose.yml \
-                 $(QUADLET_SRC)/llama-server.build \
-                 $(QUADLET_SRC)/llama-server.container
+                 $(QUADLET_SRC)/qwen3.8-27b.build \
+                 $(QUADLET_SRC)/qwen3.8-27b.container
 
 .PHONY: show verify sync build tag new-build update update-dry
 
@@ -143,7 +143,7 @@ sync: ## Rewrite image tag, build args and model ref; tag HEAD with the image ta
 		-e "s|^BuildArg=ROCM_VERSION=.*|BuildArg=ROCM_VERSION=$(ROCM_VERSION)|" \
 		-e "s|^BuildArg=BRANCH=.*|BuildArg=TAG=$(LLAMA_TAG)|" \
 		-e "s|^BuildArg=TAG=.*|BuildArg=TAG=$(LLAMA_TAG)|" \
-		$(QUADLET_SRC)/llama-server.build; \
+		$(QUADLET_SRC)/qwen3.8-27b.build; \
 	old=$$(awk -F'"' '/LLAMA_ARG_HF_REPO/{print $$2; exit}' podman-compose.yml); \
 	if [ -n "$$old" ] && [ "$$old" != "$(MODEL)" ]; then \
 		echo "syncing model ref: $$old -> $(MODEL)"; \

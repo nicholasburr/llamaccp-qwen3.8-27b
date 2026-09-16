@@ -1,6 +1,6 @@
-# fedora-llamacpp
+# llamacpp-qwen3.8-27b
 
-Podman-based deployment of `llama-server` (llama.cpp, ROCm 10 gfx1151) running
+Podman-based deployment of `qwen3.8-27b` (llama.cpp, ROCm 10 gfx1151) running
 Qwen3.8-27B-GGUF (UD-Q4_K_XL) on Strix Halo (Ryzen AI Max+ 395, 32GB UMA).
 
 ROCm 10 is installed **with pip wheels** (no repo.radeon.com RPMs) — see
@@ -25,12 +25,12 @@ deployment is an operator alternative — it is not a make target; see
 
 There are two deployment methods; both define the identical container (name,
 image, port 8000, devices, IPC, volumes, env) and both target the same
-**production slot** — the container `llama-server` on :8000. Run exactly one
+**production slot** — the container `qwen3.8-27b` on :8000. Run exactly one
 at a time:
 
 | Method | File(s) | Start |
 |---|---|---|
-| quadlet (systemd --user, **default**) | `config/containers/systemd/llama-server/*.container`, `*.build` | `make deploy` (installs the units, no root needed) |
+| quadlet (systemd --user, **default**) | `config/containers/systemd/qwen3.8-27b/*.container`, `*.build` | `make deploy` (installs the units, no root needed) |
 | podman compose (operator alternative) | `podman-compose.yml` | `podman compose up -d` (manual — see "podman compose deployment" below) |
 
 Both are kept in lockstep with `TAGS` by `make sync` (maintainer section of
@@ -71,7 +71,7 @@ the image. The container definition itself lives in the quadlet units and
 truth for the build inputs; the Makefile derives:
 
     IMAGE_TAG = <LLAMA_BUILD>-rocm-<ROCM_VERSION>    e.g. v0.4.1-rocm-10.0.0
-    IMAGE     = localhost/llama-server:v0.4.1-rocm-10.0.0    (+ a `latest` alias)
+    IMAGE     = localhost/qwen3.8-27b:v0.4.1-rocm-10.0.0    (+ a `latest` alias)
 
 `make sync` rewrites the image reference — and the quadlet `BuildArg=` lines
 plus the `LLAMA_ARG_HF_REPO` model ref — in all file-based deployment
@@ -120,8 +120,8 @@ running container.
 - The Containerfile's default `TAG` and the quadlet `BuildArg=TAG=` are
   pinned to the same tag; `make sync` keeps the quadlet lines current.
 - `make deploy-quadlet` runs in the **user namespace** (no root): it
-  installs the units into `~/.config/containers/systemd/llama-server/`,
-  then starts `llama-server-build.service` and `llama-server.service` via
+  installs the units into `~/.config/containers/systemd/qwen3.8-27b/`,
+  then starts `qwen3.8-27b-build.service` and `qwen3.8-27b.service` via
   `systemctl --user` (linger is enabled for this user, so the service
   survives logout).
 
@@ -133,7 +133,7 @@ running container.
 
     podman compose up -d                 # start (recreates if changed, like --replace)
     podman compose down                  # stop & remove
-    podman compose logs -f llama-server  # follow the logs
+    podman compose logs -f qwen3.8-27b  # follow the logs
     podman compose ps                    # status
 
 **Overrides.** The name, image and published port default to the `TAGS`
@@ -147,10 +147,10 @@ emits `--ipc` to the `podman run` argv, so the local install is patched (see
 podman-compose reinstall/update, or the model fails to load.
 
 **Production slot.** Compose and quadlet share the same slot (container
-`llama-server` on :8000). `make deploy` refuses to start while a compose
+`qwen3.8-27b` on :8000). `make deploy` refuses to start while a compose
 container is present. Taking the slot over deliberately is a two-step act:
 
-    systemctl --user disable --now llama-server.service && podman compose up -d
+    systemctl --user disable --now qwen3.8-27b.service && podman compose up -d
 
 ## ROCm 10 via pip wheels
 
@@ -246,7 +246,7 @@ originally failed.
 ## 2. Tuning pass — results
 
 Goal: find the parameters for maximum tokens/sec.
-Baseline from `llama-server` logs: **10.17–10.80 t/s** (idle windows).
+Baseline from `qwen3.8-27b` logs: **10.17–10.80 t/s** (idle windows).
 
 Eight parameter combinations were tested against the live baseline
 (`tune.sh`, `tune_pass2.sh`, `validate.sh`, `lullhunt.sh`):

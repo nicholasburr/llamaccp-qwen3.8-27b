@@ -1,15 +1,15 @@
 [Unit]
-Description=Build llama-server image for ROCm Strix Halo
-Documentation=https://github.com/nicholasburr/fedora-llamacpp
+Description=Build qwen3.8-27b image for ROCm Strix Halo
+Documentation=https://github.com/nicholasburr/llamacpp-qwen3.8-27b
 After=network-online.target
 Wants=network-online.target
 
 [Build]
-ImageTag=localhost/llama-server:v0.4.1-rocm-10.0.0
-File=containers/Containerfile.llama-server
-SetWorkingDirectory=/home/nburr/Desktop/fedora/fedora-llamacpp
+ImageTag=localhost/qwen3.8-27b:v0.4.1-rocm-10.0.0
+File=containers/Containerfile.qwen3.8-27b
+SetWorkingDirectory=/home/nburr/Desktop/fedora/llamacpp-qwen3.8-27b
 ForceRM=true
-# Build args for containers/Containerfile.llama-server (same defaults as its
+# Build args for containers/Containerfile.qwen3.8-27b (same defaults as its
 # ARG lines; kept here so the build is explicit). `make sync` keeps ImageTag
 # and these BuildArg lines in lockstep with TAGS. The GPU target (gfx1151) is
 # hardcoded in the Containerfile — it is not a build arg.

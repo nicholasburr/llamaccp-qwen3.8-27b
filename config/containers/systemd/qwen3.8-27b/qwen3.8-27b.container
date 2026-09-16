@@ -1,12 +1,11 @@
 [Unit]
-Description=Llama Server (ROCm 10.0.0)
-Wants=llama-server-build.service
+Description=Qwen3.8-27B server (ROCm 10.0.0)
+Wants=qwen3.8-27b-build.service
 After=network-online.target
 
 [Container]
-ContainerName=llama-server
-Image=localhost/llama-server:v0.4.1-rocm-10.0.0
-Network=llama-network
+ContainerName=qwen3.8-27b
+Image=localhost/qwen3.8-27b:v0.4.1-rocm-10.0.0
 PublishPort=8000:8000
 AddDevice=/dev/dri
 AddDevice=/dev/kfd

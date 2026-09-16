@@ -55,7 +55,7 @@ tuned-adm active
 # package (v1.6.0; the podman build here has no built-in compose). That
 # version handles the `shm_size` compose key but has NO `ipc` handling, so
 # `ipc: host` in podman-compose.yml is silently ignored and the ROCm
-# llama-server container runs in a private ~64MB /dev/shm namespace. Loading
+# qwen3.8-27b container runs in a private ~64MB /dev/shm namespace. Loading
 # the 27B model at 256K+ context exhausts it and the container dies during
 # model load with:
 #   "Memory critical error ... Reason: Memory in use"  (SIGSEGV / exit 139)
