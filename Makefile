@@ -133,7 +133,7 @@ DEPLOY_FILES  := podman-compose.yml \
 
 .PHONY: show verify sync build tag new-build update update-dry
 
-sync: ## [maintainer] rewrite image tag, build args and model ref in all file-based methods to match TAGS
+sync: ## Rewrite image tag, build args and model ref; tag HEAD with the image tag.
 	@echo "syncing deploy files -> $(TAGGED_IMAGE)"; \
 	for f in $(DEPLOY_FILES); do \
 		sed -i -E "s|$(IMAGE_NAME):[A-Za-z0-9._-]+|$(TAGGED_IMAGE)|g" $$f; \
@@ -153,9 +153,15 @@ sync: ## [maintainer] rewrite image tag, build args and model ref in all file-ba
 	else \
 		echo "model ref already in sync"; \
 	fi
-	@$(MAKE) --no-print-directory verify
+	@if git rev-parse -q --verify "refs/tags/$(IMAGE_TAG)" >/dev/null 2>&1; then \
+		echo "git tag $(IMAGE_TAG) already exists — leaving it untouched"; \
+	else \
+		git tag -a "$(IMAGE_TAG)" \
+			-m "llama.cpp $(LLAMA_TAG) + ROCm $(ROCM_VERSION) — image $(TAGGED_IMAGE)"; \
+		echo "tagged $$(git rev-parse --short HEAD) with $(IMAGE_TAG)"; \
+	fi
 
-build: ## [maintainer] build the active TAGS image (+ :latest), pinned to the commit in TAGS
+build: ## Build the active TAGS image, pinned to the commit in TAGS.
 	@running=$$(podman inspect "$(CONTAINER_NAME)" --format '{{.Image}}' 2>/dev/null); \
 	tagid=$$(podman image inspect "$(TAGGED_IMAGE)" --format '{{.Id}}' 2>/dev/null); \
 	if [ -n "$$running" ] && [ -n "$$tagid" ] && [ "$$running" = "$$tagid" ]; then \
@@ -170,7 +176,7 @@ build: ## [maintainer] build the active TAGS image (+ :latest), pinned to the co
 		-t $(TAGGED_IMAGE) \
 		.
 
-parametric-build: ## [maintainer] point TAGS at a llama.cpp tag (release vX.Y.Z or nightly bXXXXX): make new-build TAG=v0.4.1 [ROCM=x.y.z] [FEDORA=n]
+parametric-build: ## Build the image for a specific parameters: LLAMA_TAG=<tag> ROCM=<version> FEDORA=<version>.
 	@test -n "$(TAG)" || { echo "usage: make new-build TAG=<v-or-b-tag> [ROCM=x.y.z] [FEDORA=n]"; exit 2; }
 	@{ c=$$(git ls-remote $(LLAMA_REPO) "refs/tags/$(TAG)^{}" 2>/dev/null | awk '{print $$1}' | head -1); \
 	  [ -n "$$c" ] || c=$$(git ls-remote $(LLAMA_REPO) "refs/tags/$(TAG)" 2>/dev/null | awk '{print $$1}' | head -1); \
@@ -180,9 +186,3 @@ parametric-build: ## [maintainer] point TAGS at a llama.cpp tag (release vX.Y.Z 
 	  { test -z "$(FEDORA)" || sed -i "s|^FEDORA_VERSION=.*|FEDORA_VERSION=$(FEDORA)|" $(TAGS); }; \
 	  echo "TAGS updated -> $(IMAGE_NAME):$(TAG)-rocm-$$(awk -F= -v k=ROCM_VERSION '$$1==k{print $$2}' $(TAGS))"; \
 	  echo "next: make build && make deploy"; }
-
-update: ## [maintainer] zero input: latest llama.cpp + ROCm; build, sync, deploy, label in git (commit + tag)
-	python3 scripts/update.py
-
-update-dry: ## [maintainer] preview make update (discover latest versions + diff + plan; nothing is changed)
-	python3 scripts/update.py --dry-run
