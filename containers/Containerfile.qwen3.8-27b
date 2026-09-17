@@ -79,7 +79,7 @@ RUN git clone --recursive ${REPO} . && \
 #   - GGML_HIP_GRAPHS is ON by default; set explicitly (iGPU launch overhead).
 #   - No build flag exists or is needed for MTP speculative decoding: the
 #     model file ships the MTP head and it is enabled at runtime
-#     (LLAMA_ARG_SPEC_TYPE=draft-mtp in podman-compose.yml).
+#     (LLAMA_ARG_SPEC_TYPE=draft-mtp in compose.yaml).
 RUN . /opt/rocm-env.sh && \
     cmake -S . -B build -G Ninja \
     -DCMAKE_HIP_ARCHITECTURES=gfx1151 \

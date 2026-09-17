@@ -4,12 +4,12 @@
 #  USERS
 #  -----
 #  The default deployment is the quadlet method (user systemd, no root). The
-#  container definition lives in the quadlet units and podman-compose.yml.
+#  container definition lives in the quadlet units and compose.yaml.
 #
 #  The only end-user knob is the container name:
 #      CONTAINER_NAME ?= qwen3.8-27b
 #
-#  A plain `podman compose` deployment (podman-compose.yml) is an operator
+#  A plain `podman compose` deployment (compose.yaml) is an operator
 #  alternative. It is NOT a make target — see README.md, "podman compose
 #  deployment", for the exact commands.
 #
@@ -107,7 +107,7 @@ stop: ## Stop the service
 #      make update          # full cycle
 #      make update-dry      # discover + diff + plan only
 #
-#  The file-based deploy methods (podman-compose.yml, quadlet) are kept in
+#  The file-based deploy methods (compose.yaml, quadlet) are kept in
 #  lockstep with TAGS by `make sync`; `make verify` fails on drift.
 # ============================================================================
 
@@ -127,7 +127,7 @@ TAGGED_IMAGE := $(IMAGE_NAME):$(IMAGE_TAG)
 
 CONTAINERFILE := containers/Containerfile.qwen3.8-27b
 QUADLET_SRC   := config/containers/systemd/qwen3.8-27b
-DEPLOY_FILES  := podman-compose.yml \
+DEPLOY_FILES  := compose.yaml \
                  $(QUADLET_SRC)/qwen3.8-27b.build \
                  $(QUADLET_SRC)/qwen3.8-27b.container
 
@@ -144,7 +144,7 @@ sync: ## Rewrite image tag, build args and model ref; tag HEAD with the image ta
 		-e "s|^BuildArg=BRANCH=.*|BuildArg=TAG=$(LLAMA_TAG)|" \
 		-e "s|^BuildArg=TAG=.*|BuildArg=TAG=$(LLAMA_TAG)|" \
 		$(QUADLET_SRC)/qwen3.8-27b.build; \
-	old=$$(awk -F'"' '/LLAMA_ARG_HF_REPO/{print $$2; exit}' podman-compose.yml); \
+	old=$$(awk -F'"' '/LLAMA_ARG_HF_REPO/{print $$2; exit}' compose.yaml); \
 	if [ -n "$$old" ] && [ "$$old" != "$(MODEL)" ]; then \
 		echo "syncing model ref: $$old -> $(MODEL)"; \
 		for f in $(DEPLOY_FILES); do \

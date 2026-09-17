@@ -19,7 +19,7 @@ the **quadlet** method (user systemd, no root):
     make stop        # stop the service
 
 The container definition (name, image, env, devices, IPC, volumes, secret)
-lives in the quadlet units and `podman-compose.yml`. A **podman compose**
+lives in the quadlet units and `compose.yaml`. A **podman compose**
 deployment is an operator alternative — it is not a make target; see
 "podman compose deployment" below.
 
@@ -31,7 +31,7 @@ at a time:
 | Method | File(s) | Start |
 |---|---|---|
 | quadlet (systemd --user, **default**) | `config/containers/systemd/qwen3.8-27b/*.container`, `*.build` | `make deploy` (installs the units, no root needed) |
-| podman compose (operator alternative) | `podman-compose.yml` | `podman compose up -d` (manual — see "podman compose deployment" below) |
+| podman compose (operator alternative) | `compose.yaml` | `podman compose up -d` (manual — see "podman compose deployment" below) |
 
 Both are kept in lockstep with `TAGS` by `make sync` (maintainer section of
 the Makefile), so their image/model references never drift.
@@ -57,7 +57,7 @@ The Makefile is the single interface. The **end-user** part at the top deploys
 the service via quadlet (the only thing you usually change is
 `CONTAINER_NAME`), and the **maintainer** part at the bottom builds and updates
 the image. The container definition itself lives in the quadlet units and
-`podman-compose.yml`.
+`compose.yaml`.
 
 **End-user targets** (all you need to run the container):
 
@@ -129,7 +129,7 @@ running container.
 
 `podman compose` is the operator alternative to `make deploy` (quadlet). It is
 **not** a make target — run the compose CLI directly against
-`podman-compose.yml`:
+`compose.yaml`:
 
     podman compose up -d                 # start (recreates if changed, like --replace)
     podman compose down                  # stop & remove
@@ -232,7 +232,7 @@ Only `--ipc=host` (the host's ~63GB /dev/shm namespace) works. This is why
 a plain `podman run --ipc=host` works and the unpatched compose stack
 originally failed.
 
-- `podman-compose.yml` → `ipc: host`
+- `compose.yaml` → `ipc: host`
 - **`podman-compose` v1.6.0 has a bug: it parses `ipc:` but never emits
   `--ipc` to the `podman run` argv.** The local install is patched
   (2 lines after the `shm_size` handler). `scripts/fedora-setup.sh` §3.7
@@ -272,7 +272,7 @@ container's workload is the binding constraint, not any of these knobs.
 Pass-1 fully-clean sample (no contention at all): **compose_cur = 11.72 t/s**,
 above the baseline's 10.17–10.80 idle range.
 
-### Best parameters (final `podman-compose.yml` state)
+### Best parameters (final `compose.yaml` state)
 
 ```yaml
 environment:

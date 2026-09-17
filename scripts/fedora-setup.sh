@@ -54,7 +54,7 @@ tuned-adm active
 # `podman compose` on this system delegates to the Python `podman-compose`
 # package (v1.6.0; the podman build here has no built-in compose). That
 # version handles the `shm_size` compose key but has NO `ipc` handling, so
-# `ipc: host` in podman-compose.yml is silently ignored and the ROCm
+# `ipc: host` in compose.yaml is silently ignored and the ROCm
 # qwen3.8-27b container runs in a private ~64MB /dev/shm namespace. Loading
 # the 27B model at 256K+ context exhausts it and the container dies during
 # model load with:
