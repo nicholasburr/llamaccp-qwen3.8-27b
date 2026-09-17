@@ -125,7 +125,7 @@ MODEL          := $(call tagvar,MODEL)
 IMAGE_TAG    := $(LLAMA_TAG)-rocm-$(ROCM_VERSION)
 TAGGED_IMAGE := $(IMAGE_NAME):$(IMAGE_TAG)
 
-CONTAINERFILE := containers/Containerfile.qwen3.8-27b
+CONTAINERFILE := Containerfile
 QUADLET_SRC   := config/containers/systemd/qwen3.8-27b
 DEPLOY_FILES  := compose.yaml \
                  $(QUADLET_SRC)/qwen3.8-27b.build \
