@@ -5,13 +5,13 @@ After=network-online.target
 Wants=network-online.target
 
 [Build]
-ImageTag=localhost/qwen3.8-27b:v0.4.1-rocm-10.0.0
+ImageTag=localhost/qwen3.8-27b:v0.6.0-rocm-10.0.0
 File=Containerfile
 SetWorkingDirectory=/home/nburr/Desktop/fedora/llamacpp-qwen3.8-27b
 ForceRM=true
 BuildArg=FEDORA_VERSION=44
 BuildArg=ROCM_VERSION=10.0.0
-BuildArg=TAG=v0.4.1
+BuildArg=TAG=v0.6.0
 
 [Service]
 Type=simple

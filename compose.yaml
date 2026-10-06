@@ -23,7 +23,7 @@ secrets:
 
 services:
   qwen3.8-27b:
-    image: ${IMAGE:-localhost/qwen3.8-27b:v0.4.1-rocm-10.0.0}
+    image: ${IMAGE:-localhost/qwen3.8-27b:v0.6.0-rocm-10.0.0}
     container_name: ${CONTAINER_NAME:-qwen3.8-27b}
     # Custom code to enable ipc: host in podman-compose. See fedora-setup.sh.
     ipc: host
